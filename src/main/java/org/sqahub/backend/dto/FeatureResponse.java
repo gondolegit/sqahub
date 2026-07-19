@@ -19,6 +19,7 @@ public class FeatureResponse {
     private Long idProject;
     private String name;
     private String description;
+    private String type;
     private String tag;
     private String status;
     private Long createdBy;

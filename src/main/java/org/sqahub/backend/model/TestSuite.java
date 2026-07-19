@@ -123,4 +123,7 @@ public class TestSuite {
     protected void onUpdate() {
         this.updatedAt = LocalDateTime.now();
     }
+
+    @Column(name = "execution_type", nullable = false, length = 50)
+    private String executionType; // e.g., 'Manual', 'Automation'
 }

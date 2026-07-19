@@ -13,6 +13,8 @@ import org.sqahub.backend.repository.ProjectRepository;
 import org.sqahub.backend.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -40,7 +42,8 @@ public class FeatureService {
                 .idProject(feature.getProject().getId())
                 .name(feature.getName())
                 .description(feature.getDescription())
-//                .tag(feature.getTag())
+                .type(feature.getType())
+                .tag(feature.getTag())
                 .status(feature.getStatus())
                 .createdBy(feature.getCreatedBy().getId())
                 .createdByUsername(creator.getUsername())
@@ -90,6 +93,8 @@ public class FeatureService {
         Feature feature = Feature.builder()
                 .project(project) // Menggunakan objek Project
                 .name(request.getName())
+                .type(request.getType())
+                .tag(request.getTag())
                 .description(request.getDescription())
                 .status(request.getStatus() != null ? request.getStatus() : "Pending")
                 .createdBy(creator) // Menggunakan objek User
@@ -167,6 +172,9 @@ public class FeatureService {
         feature.setName(request.getName());
         feature.setDescription(request.getDescription());
         feature.setStatus(request.getStatus());
+        feature.setTag(request.getTag());
+        feature.setType(request.getType());
+        feature.setUpdatedAt(LocalDateTime.now());
 
         Feature updatedFeature = featureRepository.save(feature);
 

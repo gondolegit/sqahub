@@ -24,6 +24,7 @@ public class FeatureRequest {
     @Size(max = 255, message = "Nama Feature maksimal 255 karakter")
     private String name;
 
+    private String type;
     private String description;
     private String tag;
     private String status;

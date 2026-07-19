@@ -35,6 +35,9 @@ public class Feature {
     @Column(length = 50)
     private String type; // e.g., 'new', 'enhancement', 'bug fix'
 
+    @Column(length = 50)
+    private String tag; // e.g., 'v1.0'
+
     @Column(columnDefinition = "TEXT")
     private String description;
 

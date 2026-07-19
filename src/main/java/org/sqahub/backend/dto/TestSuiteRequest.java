@@ -58,4 +58,7 @@ public class TestSuiteRequest {
     @NotNull(message = "Detail eksekusi (runDetails) wajib diisi")
     @Valid
     private List<TestSuiteRunDetailRequest> runDetails;
+
+    @NotBlank(message = "Execution Type wajib diisi")
+    private String executionType;
 }

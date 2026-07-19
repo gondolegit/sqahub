@@ -26,6 +26,7 @@ public class TestSuiteResponse {
 
     private String testStage;
     private String testEnvironment;
+    private String executionType;
 
     private String hostname;
     private String os;
