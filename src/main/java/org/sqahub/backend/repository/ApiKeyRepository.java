@@ -20,9 +20,4 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, Long> {
      * Mencari kunci berdasarkan hash (digunakan saat validasi otorisasi).
      */
     Optional<ApiKey> findByKeyHash(String keyHash);
-
-    /**
-     * Mencari kunci yang aktif, kadaluarsa, atau telah digunakan.
-     */
-    Optional<ApiKey> findByIdAndStatus(Long id, String status);
 }
