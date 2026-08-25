@@ -133,6 +133,15 @@ public class SecurityConfiguration {
                         // path ini sederhananya tidak akan ada/aktif jika ClientRegistrationRepository tidak ada.
                         .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
 
+                        // Dokumentasi API (Swagger UI) - publik supaya bisa dilihat tanpa login,
+                        // tidak membocorkan data, hanya deskripsi endpoint.
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+
+                        // Health check untuk load balancer/monitoring - publik, tidak membocorkan detail internal.
+                        // Endpoint actuator lain (env, beans, metrics detail, dsb) tetap dibatasi ADMIN saja.
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
+
                         // Endpoint untuk API Key Katalon/External (Jika memerlukan API Key, mungkin butuh konfigurasi khusus)
                         // Untuk saat ini, kita anggap semua request lain butuh autentikasi penuh (JWT)
 
