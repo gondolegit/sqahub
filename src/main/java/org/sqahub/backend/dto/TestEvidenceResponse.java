@@ -23,4 +23,8 @@ public class TestEvidenceResponse {
 
     private String storagePathUrl;
     private String description;
+
+    // Diisi otomatis (bukan disimpan di DB) hanya jika evidence ini hasil upload file fisik
+    // lewat aplikasi ini (lihat POST /evidence/upload); null kalau cuma metadata + storagePathUrl eksternal.
+    private String downloadUrl;
 }

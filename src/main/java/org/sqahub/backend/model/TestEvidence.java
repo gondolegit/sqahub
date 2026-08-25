@@ -23,9 +23,15 @@ public class TestEvidence {
     private String fileType;
     private Long fileSize;
 
-    // URL publik/private ke file bukti di Object Storage (S3/GCS)
+    // URL publik/private ke file bukti di Object Storage (S3/GCS), dipakai jika evidence
+    // ini metadata yang menunjuk ke file eksternal (bukan hasil upload lewat aplikasi ini).
     @Column(length = 2048)
     private String storagePathUrl;
+
+    // Path file fisik hasil upload lewat POST /api/v1/evidence/upload (lihat app.evidence.storage-dir).
+    // Null jika evidence ini hanya metadata + storagePathUrl eksternal (jalur lama).
+    @Column(length = 1024)
+    private String localFilePath;
 
     private String description;
 }
