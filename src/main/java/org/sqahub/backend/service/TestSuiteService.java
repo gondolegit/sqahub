@@ -126,10 +126,21 @@ public class TestSuiteService {
     }
 
     // --- HELPER UNTUK RE-CALCULATE STATUS AGGREGAT ---
-    private void recalculateTotals(TestSuite testSuite) {
-        // Ambil detail terbaru (diasumsikan relasi runDetails sudah dimuat atau di-fetch ulang)
-        List<TestSuiteRunDetail> details = detailRepository.findAllByTestSuiteId(testSuite.getId());
 
+    /**
+     * Menghitung ulang total status dari detail yang sudah ada di DB (dipakai oleh update/add/delete detail,
+     * yang terjadi SETELAH testSuite sudah punya ID).
+     */
+    private void recalculateTotals(TestSuite testSuite) {
+        List<TestSuiteRunDetail> details = detailRepository.findAllByTestSuiteId(testSuite.getId());
+        applyTotals(testSuite, details);
+    }
+
+    /**
+     * Menghitung total status dari daftar detail yang SUDAH ADA di memori (dipakai saat create,
+     * sebelum testSuite punya ID, jadi tidak bisa query ulang ke DB).
+     */
+    private void applyTotals(TestSuite testSuite, List<TestSuiteRunDetail> details) {
         if (details.isEmpty()) {
             testSuite.setStatusTotalPassed(0);
             testSuite.setStatusTotalFailed(0);
@@ -170,11 +181,13 @@ public class TestSuiteService {
                 .os(request.getOs())
                 .version(request.getVersion())
                 .browser(request.getBrowser())
-                // Status aggregation dari request
-                .statusTotalPassed(request.getStatusTotalPassed() != null ? request.getStatusTotalPassed() : 0)
-                .statusTotalFailed(request.getStatusTotalFailed() != null ? request.getStatusTotalFailed() : 0)
-                .statusTotalError(request.getStatusTotalError() != null ? request.getStatusTotalError() : 0)
-                .statusTotalSkipped(request.getStatusTotalSkipped() != null ? request.getStatusTotalSkipped() : 0)
+                // Total status dihitung ULANG di bawah dari isi runDetails yang sebenarnya dikirim
+                // (bukan sekadar dipercaya mentah dari field statusTotal* milik request, yang gampang
+                // tidak sinkron dengan runDetails jika klien lupa mengisinya).
+                .statusTotalPassed(0)
+                .statusTotalFailed(0)
+                .statusTotalError(0)
+                .statusTotalSkipped(0)
                 .createdBy(user)
                 .executedBy(user)
                 .startDate(request.getStartDate())
@@ -188,6 +201,7 @@ public class TestSuiteService {
                 .collect(Collectors.toList());
 
         detailsToSave.forEach(detail -> testSuite.getRunDetails().add(detail));
+        applyTotals(testSuite, detailsToSave);
 
         TestSuite savedTestSuite = testSuiteRepository.save(testSuite);
         List<TestSuiteRunDetail> savedDetails = savedTestSuite.getRunDetails();

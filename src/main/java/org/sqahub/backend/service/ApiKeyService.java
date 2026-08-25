@@ -3,6 +3,7 @@ package org.sqahub.backend.service;
 import lombok.RequiredArgsConstructor;
 import org.sqahub.backend.dto.ApiKeyRequest;
 import org.sqahub.backend.dto.ApiKeyResponse;
+import org.sqahub.backend.exception.ResourceNotFoundException;
 import org.sqahub.backend.model.ApiKey;
 import org.sqahub.backend.model.User;
 import org.sqahub.backend.repository.ApiKeyRepository;
@@ -126,7 +127,7 @@ public class ApiKeyService {
         User currentUser = securityUtil.getAuthenticatedUser();
 
         ApiKey apiKey = apiKeyRepository.findById(apiKeyId)
-                .orElseThrow(() -> new IllegalArgumentException("API Key tidak ditemukan dengan ID: " + apiKeyId));
+                .orElseThrow(() -> new ResourceNotFoundException("API Key", "id", apiKeyId));
 
         // Verifikasi kepemilikan sebelum mencabut
         // (Role disimpan uppercase, mis. "ADMIN" - dulu dibandingkan dengan "admin" lowercase sehingga selalu false)
@@ -135,7 +136,10 @@ public class ApiKeyService {
         }
 
         if (apiKey.getStatus().equals("revoked")) {
-            throw new IllegalStateException("API Key sudah dicabut.");
+            // Sengaja IllegalArgumentException (400), BUKAN IllegalStateException - di GlobalExceptionHandler
+            // IllegalStateException dikonvensikan berarti "akses ditolak" (403), padahal ini soal
+            // permintaan yang tidak valid untuk state saat ini (key sudah dicabut), bukan otorisasi.
+            throw new IllegalArgumentException("API Key sudah dicabut.");
         }
 
         apiKey.setStatus("revoked");

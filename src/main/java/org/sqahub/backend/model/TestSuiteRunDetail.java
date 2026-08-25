@@ -81,5 +81,11 @@ public class TestSuiteRunDetail {
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+        // Kolom NOT NULL di DB - @PrePersist sudah menjaga ini saat create, tapi @PreUpdate
+        // tidak otomatis warisi guard yang sama, jadi kalau ada caller yang set null saat update
+        // (mis. request tidak menyertakan elapsedTime), harus dijaga di sini juga.
+        if (elapsedTime == null) {
+            elapsedTime = 0;
+        }
     }
 }

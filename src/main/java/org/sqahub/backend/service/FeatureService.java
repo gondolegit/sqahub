@@ -171,7 +171,11 @@ public class FeatureService {
         // Update fields
         feature.setName(request.getName());
         feature.setDescription(request.getDescription());
-        feature.setStatus(request.getStatus());
+        // status kolomnya NOT NULL di DB tapi tidak wajib diisi di FeatureRequest -
+        // kalau klien tidak mengirim status, pertahankan nilai lama alih-alih menimpa jadi null.
+        if (request.getStatus() != null) {
+            feature.setStatus(request.getStatus());
+        }
         feature.setTag(request.getTag());
         feature.setType(request.getType());
         feature.setUpdatedAt(LocalDateTime.now());
