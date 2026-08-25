@@ -46,6 +46,7 @@ public class SecurityConfiguration {
     private final AuthEntryPoint authEntryPoint;
     private final ApiKeyAuthenticationProvider apiKeyAuthenticationProvider;
     private final PasswordEncoder passwordEncoder; // Bean-nya ada di PasswordEncoderConfig
+    private final RateLimitingFilter rateLimitingFilter; // Proteksi brute-force login/register
     // Optional: hanya ada isinya jika Google OAuth2 dikonfigurasi (lihat GoogleOAuth2Config)
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
@@ -155,7 +156,11 @@ public class SecurityConfiguration {
                 // Tambahkan filter API Key (Jika Anda ingin API Key digunakan di endpoint tertentu,
                 // Anda mungkin perlu menyesuaikan urutan atau AuthManager)
                 // Karena ApiKeyAuthFilter di-setup untuk dijalankan secara global di sini, ini sudah benar.
-                .addFilterBefore(apiKeyAuthFilter, JwtAuthenticationFilter.class);
+                .addFilterBefore(apiKeyAuthFilter, JwtAuthenticationFilter.class)
+
+                // Rate limiting paling awal, sebelum otentikasi apapun diproses -
+                // supaya percobaan brute-force ditolak secepat mungkin (hemat kerja server).
+                .addFilterBefore(rateLimitingFilter, ApiKeyAuthFilter.class);
 
         // Login Google HANYA diaktifkan jika client-id/secret sudah dikonfigurasi
         // (lihat GoogleOAuth2Config). Tanpa pengecekan ini, .oauth2Login() akan melempar
