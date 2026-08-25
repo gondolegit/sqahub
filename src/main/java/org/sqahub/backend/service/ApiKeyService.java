@@ -10,8 +10,12 @@ import org.sqahub.backend.security.SecurityUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,12 +29,23 @@ public class ApiKeyService {
     private final ApiKeyRepository apiKeyRepository;
     private final SecurityUtil securityUtil;
 
-    // --- Mock Hashing Component ---
-    // Dalam implementasi nyata, ini adalah komponen 'PasswordEncoder' dari Spring Security.
-    private String hashKey(String rawKey) {
-        // Implementasi nyata menggunakan BCryptPasswordEncoder.encode(rawKey)
-        // Kita gunakan mock hashing sederhana (Base64) di sini
-        return Base64.getEncoder().encodeToString(rawKey.getBytes());
+    /**
+     * Menghasilkan hash satu-arah (SHA-256) dari raw key, dipakai sebagai lookup key
+     * di database (key_hash bersifat unique) sekaligus untuk verifikasi.
+     * Catatan: raw key sudah memiliki entropi tinggi (256 bit acak), sehingga hash
+     * cepat & deterministik seperti SHA-256 sudah standar industri untuk API key
+     * (dipakai GitHub, Stripe, dsb) — berbeda dengan password yang butuh salt+slow-hash (BCrypt),
+     * karena API key TIDAK dicari via "coba semua baris" melainkan exact-match by hash.
+     * PENTING: method ini juga dipakai oleh ApiKeyAuthenticationProvider agar hash selalu konsisten.
+     */
+    public String hashKey(String rawKey) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(rawKey.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hashBytes);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("Algoritma hashing SHA-256 tidak tersedia di JVM ini.", e);
+        }
     }
 
     // --- Helper Method ---
@@ -114,7 +129,8 @@ public class ApiKeyService {
                 .orElseThrow(() -> new IllegalArgumentException("API Key tidak ditemukan dengan ID: " + apiKeyId));
 
         // Verifikasi kepemilikan sebelum mencabut
-        if (!apiKey.getUser().getId().equals(currentUser.getId()) && !currentUser.getRole().equals("admin")) {
+        // (Role disimpan uppercase, mis. "ADMIN" - dulu dibandingkan dengan "admin" lowercase sehingga selalu false)
+        if (!apiKey.getUser().getId().equals(currentUser.getId()) && !"ADMIN".equalsIgnoreCase(currentUser.getRole())) {
             throw new SecurityException("Anda tidak memiliki hak akses untuk mencabut kunci ini.");
         }
 

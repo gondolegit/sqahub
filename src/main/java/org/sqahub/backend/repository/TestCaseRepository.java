@@ -2,6 +2,8 @@ package org.sqahub.backend.repository;
 
 import org.sqahub.backend.model.TestCase;
 import org.sqahub.backend.model.Feature;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -45,7 +47,17 @@ public interface TestCaseRepository extends JpaRepository<TestCase, Long> {
      */
     List<TestCase> findAllByProjectId(Long idProject);
 
+    /**
+     * Versi berpaginasi, supaya tidak mengembalikan seluruh baris sekaligus saat datanya sudah besar.
+     */
+    Page<TestCase> findAllByProjectId(Long idProject, Pageable pageable);
+
     // Pola yang benar: findAllBy + NamaFieldRelasi + Id
     // Traversal path: TestCase.feature.id
     List<TestCase> findAllByFeatureId(Long featureId); // BENAR!
+
+    /**
+     * Versi berpaginasi dari findAllByFeatureId.
+     */
+    Page<TestCase> findAllByFeatureId(Long featureId, Pageable pageable);
 }

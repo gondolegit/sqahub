@@ -37,18 +37,12 @@ public class FeatureController {
      */
     @GetMapping("/project/{projectId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getAllFeaturesByProject(@PathVariable Long projectId) {
-        try {
-            Long currentUserId = securityUtil.getAuthenticatedUserId();
-            // Service akan memverifikasi izin VIEW Project sebelum mengambil data.
-            List<FeatureResponse> response = featureService.getAllFeaturesByProject(projectId, currentUserId);
-            return ResponseEntity.ok(response);
-        } catch (IllegalStateException e) {
-            // Menangkap pengecualian izin (403 Forbidden)
-            return ResponseEntity.status(403).body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Terjadi kesalahan server saat mengambil fitur: " + e.getMessage());
-        }
+    public ResponseEntity<List<FeatureResponse>> getAllFeaturesByProject(@PathVariable Long projectId) {
+        // IllegalStateException (akses ditolak) dan error tak terduga lain ditangani
+        // secara terpusat oleh GlobalExceptionHandler (403 / 500 tanpa membocorkan detail internal).
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        List<FeatureResponse> response = featureService.getAllFeaturesByProject(projectId, currentUserId);
+        return ResponseEntity.ok(response);
     }
 
     // --- CREATE ---

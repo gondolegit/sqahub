@@ -1,15 +1,20 @@
 package org.sqahub.backend.controller;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.sqahub.backend.dto.AuthenticationRequest;
 import org.sqahub.backend.dto.AuthenticationResponse;
+import org.sqahub.backend.dto.ForgotPasswordRequest;
 import org.sqahub.backend.dto.RegisterRequest;
+import org.sqahub.backend.dto.ResetPasswordRequest;
 import org.sqahub.backend.service.AuthenticationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 /**
  * Controller untuk menangani semua permintaan autentikasi (Register dan Login/Authenticate).
@@ -52,5 +57,26 @@ public class AuthenticationController {
     ) {
         // Logika autentikasi ditangani sepenuhnya oleh AuthenticationService
         return ResponseEntity.ok(service.authenticate(request));
+    }
+
+    /**
+     * Endpoint POST untuk memulai alur forgot-password.
+     * Selalu mengembalikan pesan generik yang sama, terlepas dari email terdaftar atau tidak,
+     * agar tidak bisa dipakai untuk menebak (enumerate) email pengguna terdaftar.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        service.forgotPassword(request.getEmail());
+        return ResponseEntity.ok(Map.of("message",
+                "Jika email tersebut terdaftar, tautan reset password telah dikirim."));
+    }
+
+    /**
+     * Endpoint POST untuk menyelesaikan alur forgot-password menggunakan token dari email.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        service.resetPassword(request.getToken(), request.getNewPassword());
+        return ResponseEntity.ok(Map.of("message", "Password berhasil direset. Silakan login dengan password baru."));
     }
 }

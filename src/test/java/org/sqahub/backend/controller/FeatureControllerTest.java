@@ -3,12 +3,14 @@ package org.sqahub.backend.controller;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.dto.FeatureRequest;
 import org.sqahub.backend.dto.FeatureResponse;
 import org.sqahub.backend.security.SecurityUtil;
 import org.sqahub.backend.service.FeatureService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -19,6 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(FeatureController.class)
+@Import(SecurityTestConfig.class)
 public class FeatureControllerTest {
 
     @Autowired
@@ -44,7 +47,7 @@ public class FeatureControllerTest {
         mockMvc.perform(get("/api/v1/feature/project/100")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden())
-                .andExpect(content().string("Akses Ditolak: Anda tidak memiliki izin VIEW"));
+                .andExpect(jsonPath("$.message").value("Akses Ditolak: Anda tidak memiliki izin VIEW"));
     }
 
     @Test
@@ -57,15 +60,14 @@ public class FeatureControllerTest {
 
         mockMvc.perform(get("/api/v1/feature/project/100")
                         .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isInternalServerError())
-                .andExpect(content().string("Terjadi kesalahan server saat mengambil fitur: Koneksi Database Putus"));
+                .andExpect(status().isInternalServerError());
     }
 
     @Test
     @WithMockUser
     @DisplayName("White Box: Pembuatan Fitur Baru - Jalur Sukses Delegasi")
     public void testCreateFeature_Success() throws Exception {
-        FeatureRequest request = new FeatureRequest();
+        FeatureRequest request = FeatureRequest.builder().idProject(100L).name("Login").build();
         FeatureResponse response = new FeatureResponse();
 
         Mockito.when(securityUtil.getAuthenticatedUserId()).thenReturn(1L);

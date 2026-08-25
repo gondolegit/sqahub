@@ -4,12 +4,16 @@ import lombok.RequiredArgsConstructor;
 import org.sqahub.backend.dto.ProjectRequest;
 import org.sqahub.backend.dto.ProjectResponse;
 import org.sqahub.backend.service.ProjectService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import jakarta.validation.Valid;
 
 import org.sqahub.backend.security.SecurityUtil;
 
@@ -33,9 +37,10 @@ public class ProjectController {
      */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<ProjectResponse>> getAllProjects() {
+    public ResponseEntity<Page<ProjectResponse>> getAllProjects(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         Long currentUserId = securityUtil.getAuthenticatedUserId();
-        List<ProjectResponse> response = projectService.getAllProjects(currentUserId);
+        Page<ProjectResponse> response = projectService.getAllProjects(currentUserId, pageable);
         return ResponseEntity.ok(response);
     }
 
@@ -43,20 +48,16 @@ public class ProjectController {
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ProjectResponse> getProjectById(@PathVariable Long id) {
-        try {
-            Long currentUserId = securityUtil.getAuthenticatedUserId();
-            ProjectResponse response = projectService.getProjectById(id, currentUserId);
-            return ResponseEntity.ok(response);
-        } catch (IllegalStateException e) {
-            // Menangkap pengecualian izin (403 Forbidden)
-            return ResponseEntity.status(403).body(null);
-        }
+        // IllegalStateException (akses ditolak) ditangani secara terpusat oleh GlobalExceptionHandler -> 403
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        ProjectResponse response = projectService.getProjectById(id, currentUserId);
+        return ResponseEntity.ok(response);
     }
 
     // --- CREATE ---
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')") // Hanya Admin dan Tester yang bisa membuat
-    public ResponseEntity<ProjectResponse> createProject(@RequestBody ProjectRequest request) {
+    public ResponseEntity<ProjectResponse> createProject(@Valid @RequestBody ProjectRequest request) {
         ProjectResponse response = projectService.createProject(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
@@ -64,7 +65,7 @@ public class ProjectController {
     // --- UPDATE ---
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')") // Hanya Admin dan Tester yang bisa update
-    public ResponseEntity<ProjectResponse> updateProject(@PathVariable Long id, @RequestBody ProjectRequest request) {
+    public ResponseEntity<ProjectResponse> updateProject(@PathVariable Long id, @Valid @RequestBody ProjectRequest request) {
         ProjectResponse response = projectService.updateProject(id, request);
         return ResponseEntity.ok(response);
     }

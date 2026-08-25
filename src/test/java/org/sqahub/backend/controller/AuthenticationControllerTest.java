@@ -3,12 +3,14 @@ package org.sqahub.backend.controller;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.dto.AuthenticationRequest;
 import org.sqahub.backend.dto.AuthenticationResponse;
 import org.sqahub.backend.dto.RegisterRequest;
 import org.sqahub.backend.service.AuthenticationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AuthenticationController.class)
+@Import(SecurityTestConfig.class)
 public class AuthenticationControllerTest {
 
     @Autowired

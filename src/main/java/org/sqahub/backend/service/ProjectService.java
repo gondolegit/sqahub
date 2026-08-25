@@ -7,11 +7,10 @@ import org.sqahub.backend.model.Project;
 import org.sqahub.backend.model.User;
 import org.sqahub.backend.repository.ProjectRepository;
 import org.sqahub.backend.security.SecurityUtil;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 import org.sqahub.backend.exception.ResourceNotFoundException;
 import org.sqahub.backend.repository.UserRepository;
@@ -54,15 +53,12 @@ public class ProjectService {
     // --- CRUD Operations ---
 
     /**
-     * Memperbaiki Project Listing: Mengambil semua proyek di mana user adalah OWNER atau MEMBER.
+     * Mengambil semua proyek di mana user adalah OWNER atau MEMBER, dengan paginasi
+     * (supaya tidak mengembalikan seluruh baris sekaligus saat datanya sudah besar).
      */
-    public List<ProjectResponse> getAllProjects(Long userId) {
-        // Menggunakan query Repository yang telah diperbaiki
-        List<Project> projects = projectRepository.findAccessibleProjectsByUserId(userId);
-
-        return projects.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+    public Page<ProjectResponse> getAllProjects(Long userId, Pageable pageable) {
+        return projectRepository.findAccessibleProjectsByUserId(userId, pageable)
+                .map(this::mapToResponse);
     }
 
     public ProjectResponse getProjectById(Long id, Long currentUserId) {
@@ -75,22 +71,6 @@ public class ProjectService {
         }
 
         return mapToResponse(project);
-    }
-
-    /**
-     * Konversi Project Entity menjadi Project Response DTO.
-     */
-    private ProjectResponse toResponse(Project project) {
-        return ProjectResponse.builder()
-                .id(project.getId())
-                .name(project.getName())
-                .description(project.getDescription())
-                .type(project.getType())
-                .status(project.getStatus())
-                .createdByUsername(String.valueOf(project.getCreatedBy()))
-                .createdAt(project.getCreatedAt())
-                .updatedAt(project.getUpdatedAt())
-                .build();
     }
 
     /**
@@ -121,38 +101,7 @@ public class ProjectService {
         project.setCreatedBy(currentUser.getId()); // Otomatis set foreign key
 
         Project savedProject = projectRepository.save(project);
-        return toResponse(savedProject);
-    }
-
-    /**
-     * Mengambil semua Proyek yang dibuat oleh User yang sedang login.
-     * @return List<ProjectResponse> Daftar proyek milik user.
-     */
-    public List<ProjectResponse> getAllMyProjects() {
-        // PERHATIAN: Baris ini sekarang memanggil SecurityUtil untuk mendapatkan User Entity
-        User currentUser = securityUtil.getAuthenticatedUser();
-
-        // Menggunakan kueri kustom dari ProjectRepository, yang membutuhkan objek User Entity JPA
-        List<Project> projects = projectRepository.findAllByCreatedBy(currentUser.getId());
-
-        return projects.stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Mengambil Project berdasarkan ID.
-     * @param projectId ID Project.
-     * @return ProjectResponse.
-     */
-    public ProjectResponse getProjectById(Long projectId) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project tidak ditemukan dengan ID: " + projectId));
-
-        // Catatan: Jika ingin membatasi view hanya untuk pemilik, tambahkan checkOwnership di sini.
-        checkOwnership(project, securityUtil.getAuthenticatedUser());
-
-        return toResponse(project);
+        return mapToResponse(savedProject);
     }
 
     /**
@@ -177,7 +126,7 @@ public class ProjectService {
         project.setStatus(request.getStatus());
 
         Project updatedProject = projectRepository.save(project);
-        return toResponse(updatedProject);
+        return mapToResponse(updatedProject);
     }
 
     /**

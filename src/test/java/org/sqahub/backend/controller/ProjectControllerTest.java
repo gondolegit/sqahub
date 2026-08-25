@@ -3,12 +3,14 @@ package org.sqahub.backend.controller;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.dto.ProjectRequest;
 import org.sqahub.backend.dto.ProjectResponse;
 import org.sqahub.backend.security.SecurityUtil;
 import org.sqahub.backend.service.ProjectService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -19,6 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ProjectController.class)
+@Import(SecurityTestConfig.class)
 public class ProjectControllerTest {
 
     @Autowired
@@ -37,7 +40,8 @@ public class ProjectControllerTest {
     @WithMockUser(roles = "DEVELOPER")
     @DisplayName("White Box: Update Project - Jalur Gagal Peran Tidak Memadai (403)")
     public void testUpdateProject_AsDeveloper_Forbidden() throws Exception {
-        ProjectRequest request = new ProjectRequest();
+        // Diisi valid (bukan kosong) supaya yang diuji murni penolakan ROLE (403), bukan kegagalan @Valid (400)
+        ProjectRequest request = ProjectRequest.builder().name("Proyek A").type("web").build();
 
         mockMvc.perform(put("/api/v1/project/1")
                         .contentType(MediaType.APPLICATION_JSON)

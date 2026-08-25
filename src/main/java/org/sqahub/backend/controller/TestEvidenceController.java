@@ -1,11 +1,13 @@
 package org.sqahub.backend.controller;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.sqahub.backend.dto.TestEvidenceRequest;
 import org.sqahub.backend.dto.TestEvidenceResponse;
+import org.sqahub.backend.security.SecurityUtil;
 import org.sqahub.backend.service.TestEvidenceService;
 
 import java.util.List;
@@ -13,39 +15,37 @@ import java.util.List;
 /**
  * Controller untuk mengelola endpoint TestEvidence (Metadata Bukti).
  * Menggunakan Request dan Response DTOs.
+ * Otorisasi (keanggotaan proyek) diverifikasi di TestEvidenceService.
  */
 @RestController
 @RequestMapping("/api/v1/evidence")
+@RequiredArgsConstructor
 public class TestEvidenceController {
 
-    @Autowired
-    private TestEvidenceService evidenceService;
+    private final TestEvidenceService evidenceService;
+    private final SecurityUtil securityUtil;
 
     /**
      * Endpoint [POST] untuk mencatat metadata bukti.
-     * Menerima TestEvidenceRequest dan mengembalikan TestEvidenceResponse.
-     * @param request Payload bukti tes.
-     * @return Response DTO dari bukti yang telah disimpan.
+     * IllegalArgumentException (400) dan IllegalStateException/akses ditolak (403)
+     * ditangani secara terpusat oleh GlobalExceptionHandler.
      */
     @PostMapping
-    public ResponseEntity<?> addEvidence(@RequestBody TestEvidenceRequest request) {
-        try {
-            TestEvidenceResponse savedEvidence = evidenceService.addEvidence(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(savedEvidence);
-        } catch (IllegalArgumentException e) {
-            // Mengembalikan BAD_REQUEST jika runDetailId tidak valid (sesuai validasi di Service)
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<TestEvidenceResponse> addEvidence(@RequestBody TestEvidenceRequest request) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        TestEvidenceResponse savedEvidence = evidenceService.addEvidence(request, currentUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedEvidence);
     }
 
     /**
      * Endpoint [GET] untuk mendapatkan semua bukti yang terhubung ke Run Detail tertentu.
-     * @param runDetailId ID dari Run Detail.
-     * @return Daftar Response DTO bukti yang ditemukan.
      */
     @GetMapping("/run/{runDetailId}")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<TestEvidenceResponse>> getEvidenceForRun(@PathVariable Long runDetailId) {
-        List<TestEvidenceResponse> evidenceList = evidenceService.getEvidenceByRunDetailId(runDetailId);
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        List<TestEvidenceResponse> evidenceList = evidenceService.getEvidenceByRunDetailId(runDetailId, currentUserId);
         return ResponseEntity.ok(evidenceList);
     }
 }

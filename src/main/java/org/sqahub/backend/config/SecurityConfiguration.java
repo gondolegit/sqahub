@@ -1,8 +1,11 @@
 package org.sqahub.backend.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.sqahub.backend.repository.UserRepository;
@@ -20,7 +23,6 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -43,6 +45,11 @@ public class SecurityConfiguration {
     private final JwtService jwtService;
     private final AuthEntryPoint authEntryPoint;
     private final ApiKeyAuthenticationProvider apiKeyAuthenticationProvider;
+    private final PasswordEncoder passwordEncoder; // Bean-nya ada di PasswordEncoderConfig
+    // Optional: hanya ada isinya jika Google OAuth2 dikonfigurasi (lihat GoogleOAuth2Config)
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
+    private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 
     // Field untuk Authentication Provider dan UserDetailsService Dihapus karena sudah ada di Bean method atau diinjeksikan
 
@@ -65,14 +72,6 @@ public class SecurityConfiguration {
                 .orElseThrow(() -> new UsernameNotFoundException("Pengguna tidak ditemukan: " + username));
     }
 
-    /**
-     * BCrypt Password Encoder, standar industri untuk hashing password.
-     */
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
     // Method authenticationProvider() standar dihapus karena sudah di-handle di authenticationManager() kustom
 
     /**
@@ -85,9 +84,10 @@ public class SecurityConfiguration {
         // DAO Provider untuk login username/password
         DaoAuthenticationProvider daoProvider = new DaoAuthenticationProvider();
 
-        // Gunakan UserDetailsService dan PasswordEncoder dari Bean methods di kelas ini
+        // Gunakan UserDetailsService dari Bean method di kelas ini, dan PasswordEncoder
+        // yang diinjeksikan dari PasswordEncoderConfig (dipisah untuk menghindari circular dependency)
         daoProvider.setUserDetailsService(userDetailsService());
-        daoProvider.setPasswordEncoder(passwordEncoder());
+        daoProvider.setPasswordEncoder(passwordEncoder);
 
         // Menggabungkan dua provider: DAO untuk user dan kustom untuk API Key
         // Gunakan ProviderManager karena kita mendefinisikan provider secara manual
@@ -128,6 +128,11 @@ public class SecurityConfiguration {
                         // VITAL: Aturan ini harus diutamakan. Izinkan akses publik untuk semua endpoint di bawah /api/v1/auth/
                         .requestMatchers("/api/v1/auth/**").permitAll()
 
+                        // Endpoint alur redirect Google OAuth2 (harus publik, terjadi SEBELUM user punya JWT).
+                        // Aman untuk selalu di-permitAll walau fitur ini nonaktif (client-id belum dikonfigurasi) -
+                        // path ini sederhananya tidak akan ada/aktif jika ClientRegistrationRepository tidak ada.
+                        .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+
                         // Endpoint untuk API Key Katalon/External (Jika memerlukan API Key, mungkin butuh konfigurasi khusus)
                         // Untuk saat ini, kita anggap semua request lain butuh autentikasi penuh (JWT)
 
@@ -143,17 +148,34 @@ public class SecurityConfiguration {
                 // Karena ApiKeyAuthFilter di-setup untuk dijalankan secara global di sini, ini sudah benar.
                 .addFilterBefore(apiKeyAuthFilter, JwtAuthenticationFilter.class);
 
+        // Login Google HANYA diaktifkan jika client-id/secret sudah dikonfigurasi
+        // (lihat GoogleOAuth2Config). Tanpa pengecekan ini, .oauth2Login() akan melempar
+        // exception saat startup karena mencari bean ClientRegistrationRepository yang tidak ada.
+        ClientRegistrationRepository clientRegistrationRepository = clientRegistrationRepositoryProvider.getIfAvailable();
+        if (clientRegistrationRepository != null) {
+            http.oauth2Login(oauth2 -> oauth2
+                    .clientRegistrationRepository(clientRegistrationRepository)
+                    .successHandler(oAuth2AuthenticationSuccessHandler)
+                    .failureHandler(oAuth2AuthenticationFailureHandler)
+            );
+        }
 
         return http.build();
     }
 
     @Configuration
     public class CorsConfig implements WebMvcConfigurer {
+
+        // Daftar origin diambil dari properti (env var di production), bukan hardcoded,
+        // supaya domain frontend production tidak perlu rebuild kode untuk diganti.
+        @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}")
+        private String[] allowedOrigins;
+
         @Override
         public void addCorsMappings(CorsRegistry registry) {
             registry.addMapping("/**") // Terapkan ke semua path
-                    .allowedOrigins("http://localhost:5173", "http://127.0.0.1:5173") // <-- Domain/Port Frontend Anda
-                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                    .allowedOrigins(allowedOrigins)
+                    .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                     .allowedHeaders("*")
                     .allowCredentials(true);
         }

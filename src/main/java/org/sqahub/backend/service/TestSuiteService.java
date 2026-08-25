@@ -5,6 +5,7 @@ import org.sqahub.backend.dto.TestSuiteRequest;
 import org.sqahub.backend.dto.TestSuiteResponse;
 import org.sqahub.backend.dto.TestSuiteRunDetailRequest;
 import org.sqahub.backend.dto.TestSuiteRunDetailResponse;
+import org.sqahub.backend.dto.DeployDecisionResponse;
 import org.sqahub.backend.exception.ResourceNotFoundException;
 import org.sqahub.backend.model.Project;
 import org.sqahub.backend.model.TestSuite;
@@ -16,6 +17,8 @@ import org.sqahub.backend.repository.TestSuiteRunDetailRepository;
 import org.sqahub.backend.repository.UserRepository;
 import org.sqahub.backend.repository.TestCaseRepository;
 import org.sqahub.backend.repository.ProjectRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +42,7 @@ public class TestSuiteService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberService projectMemberService;
     private final ActivityLogService activityLogService;
+    private final DeployDecisionService deployDecisionService;
 
     // --- MAPPERS ---
 
@@ -196,14 +200,12 @@ public class TestSuiteService {
 
     // READ (All Test Suites by Project)
     @Transactional(readOnly = true)
-    public List<TestSuiteResponse> getAllTestSuitesByProject(Long projectId, Long currentUserId) {
+    public Page<TestSuiteResponse> getAllTestSuitesByProject(Long projectId, Long currentUserId, Pageable pageable) {
         if (!projectMemberService.isViewAccessAllowed(projectId, currentUserId)) {
             throw new IllegalStateException("Akses Ditolak: Anda tidak memiliki izin untuk melihat Test Suite Run di proyek ini.");
         }
-        List<TestSuite> testSuites = testSuiteRepository.findAllByProject_Id(projectId);
-        return testSuites.stream()
-                .map(ts -> mapToResponse(ts, List.of())) // Kirim tanpa detail untuk efisiensi daftar
-                .collect(Collectors.toList());
+        return testSuiteRepository.findAllByProject_Id(projectId, pageable)
+                .map(ts -> mapToResponse(ts, List.of())); // Kirim tanpa detail untuk efisiensi daftar
     }
 
     // READ (Single Test Suite)
@@ -248,12 +250,11 @@ public class TestSuiteService {
         // Jika request memiliki runDetails, ini adalah full overwrite, yang rumit,
         // jadi kita biarkan service ini hanya untuk metadata update.
 
-        TestSuite updatedTestSuite = testSuiteRepository.save(testSuite);
-
-        // Ambil detail dan re-calculate status (jika metadata yang di-update)
+        // Re-calculate status dari detail yang ada SEBELUM disimpan, agar cukup satu kali save.
         List<TestSuiteRunDetail> details = detailRepository.findAllByTestSuiteId(id);
-        recalculateTotals(updatedTestSuite); // Recalculate based on existing details
-        testSuiteRepository.save(updatedTestSuite); // Simpan hasil recalculation
+        recalculateTotals(testSuite);
+
+        TestSuite updatedTestSuite = testSuiteRepository.save(testSuite);
 
         activityLogService.logAction(currentUserId, "UPDATE_TEST_SUITE_RUN", "test_suite", updatedTestSuite.getId(),
                 "Memperbarui metadata Test Suite Run '" + updatedTestSuite.getName() + "'.", null);
@@ -406,5 +407,27 @@ public class TestSuiteService {
         List<TestSuiteRunDetail> details = detailRepository.findAllByTestSuiteId(id);
 
         return mapToResponse(updatedTestSuite, details);
+    }
+
+    /**
+     * Mengevaluasi kelayakan deploy dari sebuah Test Suite Run berdasarkan pass rate
+     * (statusTotalPassed/Failed/Error/Skipped) dibanding ambang batas terkonfigurasi.
+     */
+    @Transactional(readOnly = true)
+    public DeployDecisionResponse getDeployDecision(Long id, Long currentUserId) {
+        TestSuite testSuite = testSuiteRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("TestSuite", "id", id));
+
+        if (!projectMemberService.isViewAccessAllowed(testSuite.getProject().getId(), currentUserId)) {
+            throw new IllegalStateException("Akses Ditolak: Anda tidak memiliki izin untuk melihat Test Suite Run ini.");
+        }
+
+        return deployDecisionService.evaluate(
+                testSuite.getId(),
+                testSuite.getName(),
+                testSuite.getStatusTotalPassed(),
+                testSuite.getStatusTotalFailed(),
+                testSuite.getStatusTotalError(),
+                testSuite.getStatusTotalSkipped());
     }
 }

@@ -47,6 +47,17 @@ public class User implements UserDetails {
     @Column(length = 20, nullable = false)
     private String status; // e.g., active, disabled
 
+    // Asal akun: "LOCAL" (daftar manual) atau "GOOGLE" (via Google OAuth2)
+    @Column(length = 20)
+    private String provider;
+
+    // Token sekali-pakai untuk alur forgot-password, null jika tidak sedang direset
+    @Column(name = "reset_password_token", length = 255)
+    private String resetPasswordToken;
+
+    @Column(name = "reset_password_token_expiry")
+    private LocalDateTime resetPasswordTokenExpiry;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -56,6 +67,9 @@ public class User implements UserDetails {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        if (provider == null) {
+            provider = "LOCAL";
+        }
     }
 
     @PreUpdate

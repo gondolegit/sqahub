@@ -3,6 +3,7 @@ package org.sqahub.backend.security;
 import lombok.RequiredArgsConstructor;
 import org.sqahub.backend.model.ApiKey;
 import org.sqahub.backend.repository.ApiKeyRepository;
+import org.sqahub.backend.service.ApiKeyService;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -11,6 +12,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Optional;
 
@@ -22,19 +24,13 @@ import java.util.Optional;
 public class ApiKeyAuthenticationProvider implements AuthenticationProvider {
 
     private final ApiKeyRepository apiKeyRepository;
-    // NOTE: Dalam implementasi nyata, Anda akan menggunakan PasswordEncoder yang sama
-    // untuk membandingkan rawKey dengan keyHash. Untuk saat ini, kita akan mock
-    // dengan membandingkan hash yang sudah dimock di ApiKeyService.
+    private final ApiKeyService apiKeyService; // Sumber tunggal logika hashing, agar konsisten dengan pembuatan key
 
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
         // Raw API Key yang dikirim oleh client
         String rawKey = authentication.getPrincipal().toString();
-
-        // --- Mock Hashing Component (Harus sama dengan di ApiKeyService) ---
-        // Dalam implementasi nyata, ini adalah komponen 'PasswordEncoder' dari Spring Security.
-        String keyHash = java.util.Base64.getEncoder().encodeToString(rawKey.getBytes());
-        // -------------------------------------------------------------------
+        String keyHash = apiKeyService.hashKey(rawKey);
 
         Optional<ApiKey> apiKeyOptional = apiKeyRepository.findByKeyHash(keyHash);
 
@@ -43,6 +39,13 @@ public class ApiKeyAuthenticationProvider implements AuthenticationProvider {
         }
 
         ApiKey apiKey = apiKeyOptional.get();
+
+        if (apiKey.getExpiresAt() != null && apiKey.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new BadCredentialsException("Kunci API sudah kadaluarsa.");
+        }
+
+        apiKey.setLastUsedAt(LocalDateTime.now());
+        apiKeyRepository.save(apiKey);
 
         // Asumsikan API Key memiliki peran dasar 'TESTER' atau 'AUTOMATION'
         String role = String.valueOf(apiKey.getUser().getRole());

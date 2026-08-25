@@ -3,12 +3,14 @@ package org.sqahub.backend.controller;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.dto.ProjectMemberRequest;
 import org.sqahub.backend.dto.ProjectMemberResponse;
 import org.sqahub.backend.security.SecurityUtil;
 import org.sqahub.backend.service.ProjectMemberService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -19,6 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ProjectMemberController.class)
+@Import(SecurityTestConfig.class)
 public class ProjectMemberControllerTest {
 
     @Autowired
@@ -37,7 +40,7 @@ public class ProjectMemberControllerTest {
     @WithMockUser
     @DisplayName("White Box: Tambah Anggota Proyek Baru - Jalur Sukses")
     public void testAddMember_Success() throws Exception {
-        ProjectMemberRequest request = new ProjectMemberRequest();
+        ProjectMemberRequest request = ProjectMemberRequest.builder().idUser(2L).role("DEVELOPER").build();
         ProjectMemberResponse response = new ProjectMemberResponse();
 
         Mockito.when(securityUtil.getAuthenticatedUserId()).thenReturn(1L);
@@ -54,6 +57,7 @@ public class ProjectMemberControllerTest {
     @DisplayName("White Box: Ubah Peran Otoritas Anggota - Jalur Sukses")
     public void testUpdateMemberRole_Success() throws Exception {
         ProjectMemberRequest request = new ProjectMemberRequest();
+        request.setIdUser(2L);
         request.setRole("DEVELOPER");
         ProjectMemberResponse response = new ProjectMemberResponse();
 

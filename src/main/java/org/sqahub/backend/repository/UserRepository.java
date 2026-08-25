@@ -17,4 +17,24 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * @return Optional<User> berisi entitas User jika ditemukan.
      */
     Optional<User> findByUsername(String username);
+
+    /**
+     * Mengecek apakah username sudah terdaftar. Digunakan untuk validasi registrasi.
+     */
+    boolean existsByUsername(String username);
+
+    /**
+     * Mengecek apakah email sudah terdaftar. Digunakan untuk validasi registrasi.
+     */
+    boolean existsByEmail(String email);
+
+    /**
+     * Mencari pengguna berdasarkan email. Dipakai untuk forgot-password dan login Google OAuth2.
+     */
+    Optional<User> findByEmail(String email);
+
+    /**
+     * Mencari pengguna berdasarkan token reset password yang sedang aktif.
+     */
+    Optional<User> findByResetPasswordToken(String token);
 }

@@ -1,26 +1,27 @@
 package org.sqahub.backend.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.sqahub.backend.dto.TestEvidenceRequest;
 import org.sqahub.backend.dto.TestEvidenceResponse;
 import org.sqahub.backend.model.TestEvidence;
+import org.sqahub.backend.model.TestSuiteRunDetail;
 import org.sqahub.backend.repository.TestEvidenceRepository;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Layanan untuk mengelola metadata bukti tes, termasuk validasi.
+ * Layanan untuk mengelola metadata bukti tes, termasuk validasi dan otorisasi.
  */
 @Service
+@RequiredArgsConstructor
 public class TestEvidenceService {
 
-    @Autowired
-    private TestEvidenceRepository evidenceRepository;
-
-    @Autowired
-    private TestSuiteRunDetailService runDetailService;
+    private final TestEvidenceRepository evidenceRepository;
+    private final TestSuiteRunDetailService runDetailService;
+    private final ProjectMemberService projectMemberService;
 
     /**
      * Mengkonversi Entity menjadi Response DTO.
@@ -52,31 +53,48 @@ public class TestEvidenceService {
     }
 
     /**
-     * Mencatat bukti baru ke database.
-     * @param request DTO input bukti.
-     * @return Response DTO dari bukti yang telah disimpan.
-     * @throws IllegalArgumentException jika runDetailId tidak ditemukan.
+     * Mengambil TestSuiteRunDetail terkait dan memastikan user punya izin di proyeknya.
+     * Mencegah IDOR: tanpa ini, siapapun yang login bisa membaca/menulis evidence milik proyek lain.
      */
-    public TestEvidenceResponse addEvidence(TestEvidenceRequest request) {
-        // 1. Validasi: Pastikan runDetailId valid
-        if (request.getRunDetailId() == null || runDetailService.getRunDetailById(request.getRunDetailId()).isEmpty()) {
-            throw new IllegalArgumentException("Run Detail dengan ID " + request.getRunDetailId() + " tidak ditemukan. Bukti tidak dapat dicatat.");
+    private TestSuiteRunDetail requireRunDetailWithAccess(Long runDetailId, Long currentUserId, boolean requireEdit) {
+        if (runDetailId == null) {
+            throw new IllegalArgumentException("Run Detail ID wajib diisi.");
         }
+        TestSuiteRunDetail runDetail = runDetailService.getRunDetailById(runDetailId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Run Detail dengan ID " + runDetailId + " tidak ditemukan. Bukti tidak dapat dicatat."));
 
-        // 2. Mapping dan Simpan Entity
+        Long projectId = runDetail.getTestSuite().getProject().getId();
+        boolean allowed = requireEdit
+                ? projectMemberService.isEditAccessAllowed(projectId, currentUserId)
+                : projectMemberService.isViewAccessAllowed(projectId, currentUserId);
+
+        if (!allowed) {
+            throw new IllegalStateException("Akses Ditolak: Anda tidak memiliki izin atas Test Run ini.");
+        }
+        return runDetail;
+    }
+
+    /**
+     * Mencatat bukti baru ke database.
+     */
+    @Transactional
+    public TestEvidenceResponse addEvidence(TestEvidenceRequest request, Long currentUserId) {
+        requireRunDetailWithAccess(request.getRunDetailId(), currentUserId, true);
+
         TestEvidence evidenceToSave = mapToEntity(request);
         TestEvidence savedEvidence = evidenceRepository.save(evidenceToSave);
 
-        // 3. Konversi ke Response DTO dan kembalikan
         return mapToResponse(savedEvidence);
     }
 
     /**
-     * Mendapatkan semua bukti untuk Run Detail tertentu.
-     * @param runDetailId ID dari Run Detail.
-     * @return Daftar Response DTO TestEvidence.
+     * Mendapatkan semua bukti untuk Run Detail tertentu (memerlukan akses VIEW ke proyeknya).
      */
-    public List<TestEvidenceResponse> getEvidenceByRunDetailId(Long runDetailId) {
+    @Transactional(readOnly = true)
+    public List<TestEvidenceResponse> getEvidenceByRunDetailId(Long runDetailId, Long currentUserId) {
+        requireRunDetailWithAccess(runDetailId, currentUserId, false);
+
         return evidenceRepository.findByRunDetailId(runDetailId)
                 .stream()
                 .map(this::mapToResponse)

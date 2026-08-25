@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
@@ -19,6 +21,8 @@ import java.io.IOException;
  */
 @RequiredArgsConstructor
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiKeyAuthFilter.class);
 
     private final AuthenticationManager authenticationManager;
     private final String apiKeyHeader = "X-API-KEY";
@@ -43,10 +47,10 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             } catch (BadCredentialsException ex) {
                 // Lanjutkan ke filter berikutnya tanpa otentikasi di context
                 // Ini akan ditangkap oleh EntryPoint jika tidak ada otentikasi lain (misal login)
-                System.out.println("Gagal otentikasi API Key: " + ex.getMessage());
+                log.debug("Gagal otentikasi API Key: {}", ex.getMessage());
             } catch (Exception ex) {
                 // Kesalahan umum lainnya
-                System.err.println("Kesalahan saat memproses API Key: " + ex.getMessage());
+                log.error("Kesalahan saat memproses API Key", ex);
             }
         }
 

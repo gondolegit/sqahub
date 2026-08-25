@@ -5,13 +5,16 @@ import org.sqahub.backend.dto.TestCaseRequest;
 import org.sqahub.backend.dto.TestCaseResponse;
 import org.sqahub.backend.security.SecurityUtil;
 import org.sqahub.backend.service.TestCaseService;
-import org.sqahub.backend.exception.ResourceNotFoundException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import jakarta.validation.Valid;
 import java.security.Principal;
 
 /**
@@ -35,24 +38,13 @@ public class TestCaseController {
      */
     @GetMapping("/project/{projectId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getAllTestCasesByProject(@PathVariable Long projectId) {
-        try {
-            Long currentUserId = securityUtil.getAuthenticatedUserId();
-
-            // Panggil Service untuk mengambil data dan memverifikasi izin VIEW Project.
-            List<TestCaseResponse> response = testCaseService.getAllTestCasesByProject(projectId, currentUserId);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalStateException e) {
-            // Catch jika otorisasi di Service gagal (e.g., "Akses Ditolak")
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
-        } catch (ResourceNotFoundException e) {
-            // Handle jika Project tidak ditemukan
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        } catch (Exception e) {
-            // Catch error umum lainnya
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Terjadi kesalahan server saat mengambil Test Case berdasarkan Project: " + e.getMessage());
-        }
+    public ResponseEntity<Page<TestCaseResponse>> getAllTestCasesByProject(
+            @PathVariable Long projectId,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        // Akses ditolak / tidak ditemukan / error lain ditangani terpusat oleh GlobalExceptionHandler.
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        Page<TestCaseResponse> response = testCaseService.getAllTestCasesByProject(projectId, currentUserId, pageable);
+        return ResponseEntity.ok(response);
     }
     // --- END NEW ENDPOINT ---
 
@@ -64,44 +56,22 @@ public class TestCaseController {
      */
     @GetMapping("/feature/{featureId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getAllTestCasesByFeature(@PathVariable Long featureId) {
-        try {
-            Long currentUserId = securityUtil.getAuthenticatedUserId();
-
-            // Service akan memverifikasi izin VIEW Project sebelum mengambil data.
-            List<TestCaseResponse> response = testCaseService.getAllTestCasesByFeature(featureId, currentUserId);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalStateException e) {
-            // Catch jika securityUtil gagal atau otorisasi di Service gagal
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
-        } catch (ResourceNotFoundException e) {
-            // Handle jika Feature tidak ditemukan
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        } catch (Exception e) {
-            // Catch error umum lainnya
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Terjadi kesalahan server saat mengambil Test Case: " + e.getMessage());
-        }
+    public ResponseEntity<Page<TestCaseResponse>> getAllTestCasesByFeature(
+            @PathVariable Long featureId,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        Page<TestCaseResponse> response = testCaseService.getAllTestCasesByFeature(featureId, currentUserId, pageable);
+        return ResponseEntity.ok(response);
     }
 
 
     // --- CREATE ---
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')")
-    public ResponseEntity<?> createTestCase(@RequestBody TestCaseRequest request) {
-        try {
-            Long currentUserId = securityUtil.getAuthenticatedUserId();
-            TestCaseResponse response = testCaseService.createTestCase(request, currentUserId);
-            return new ResponseEntity<>(response, HttpStatus.CREATED);
-        } catch (IllegalStateException e) {
-            // Menangkap "Akses Ditolak" dari Service Layer
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
-        } catch (ResourceNotFoundException e) {
-            // Menangkap jika Feature atau User tidak ditemukan
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Terjadi kesalahan yang tidak terduga di server: " + e.getMessage());
-        }
+    public ResponseEntity<TestCaseResponse> createTestCase(@Valid @RequestBody TestCaseRequest request) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        TestCaseResponse response = testCaseService.createTestCase(request, currentUserId);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
     // --- READ (Single Test Case) ---
@@ -116,7 +86,7 @@ public class TestCaseController {
     // --- UPDATE ---
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')")
-    public ResponseEntity<TestCaseResponse> updateTestCase(@PathVariable Long id, @RequestBody TestCaseRequest request) {
+    public ResponseEntity<TestCaseResponse> updateTestCase(@PathVariable Long id, @Valid @RequestBody TestCaseRequest request) {
         Long currentUserId = securityUtil.getAuthenticatedUserId();
         TestCaseResponse response = testCaseService.updateTestCase(id, request, currentUserId);
         return ResponseEntity.ok(response);

@@ -3,6 +3,8 @@ package org.sqahub.backend.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sqahub.backend.model.ActivityLog;
 import org.sqahub.backend.repository.ActivityLogRepository;
 import org.springframework.data.domain.Page;
@@ -20,6 +22,8 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class ActivityLogService {
+
+    private static final Logger log = LoggerFactory.getLogger(ActivityLogService.class);
 
     // Hanya satu field repository yang diperlukan
     private final ActivityLogRepository activityLogRepository;
@@ -75,7 +79,7 @@ public class ActivityLogService {
             try {
                 detailsJson = objectMapper.writeValueAsString(detailsMap);
             } catch (JsonProcessingException e) {
-                System.err.println("Error converting log details to JSON: " + e.getMessage());
+                log.warn("Error converting log details to JSON: {}", e.getMessage());
                 detailsJson = "JSON conversion failed.";
             }
         }

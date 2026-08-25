@@ -12,10 +12,10 @@ import org.sqahub.backend.repository.FeatureRepository;
 import org.sqahub.backend.repository.ProjectRepository;
 import org.sqahub.backend.repository.TestCaseRepository;
 import org.sqahub.backend.repository.UserRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Service untuk mengelola semua operasi TestCase.
@@ -63,9 +63,9 @@ public class TestCaseService {
      * Mengambil SEMUA Test Case di Project tertentu, asalkan user memiliki akses VIEW pada Project.
      * Logika izin ProjectMember menggantikan filter createdBy.
      */
-    public List<TestCaseResponse> getAllTestCasesByProject(Long projectId, Long currentUserId) {
+    public Page<TestCaseResponse> getAllTestCasesByProject(Long projectId, Long currentUserId, Pageable pageable) {
         // 1. Verifikasi Proyek: Pastikan Project ada
-        Project project = projectRepository.findById(projectId)
+        projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project", "id", projectId));
 
         // 2. Pengecekan Izin: User harus memiliki izin VIEW pada proyek
@@ -73,14 +73,9 @@ public class TestCaseService {
             throw new IllegalStateException("Akses Ditolak: Anda tidak memiliki izin untuk melihat Test Case di proyek ini.");
         }
 
-        // 3. Ambil SEMUA Test Case berdasarkan ID Project
-        // CATATAN PENTING: Anda perlu menambahkan method 'findAllByProjectId(Long projectId)'
-        // ke TestCaseRepository agar baris ini berfungsi.
-        List<TestCase> testCases = testCaseRepository.findAllByProjectId(projectId);
-
-        return testCases.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+        // 3. Ambil Test Case berdasarkan ID Project, dipaginasi
+        return testCaseRepository.findAllByProjectId(projectId, pageable)
+                .map(this::mapToResponse);
     }
     // --- END NEW ENDPOINT LOGIC ---
 
@@ -88,7 +83,7 @@ public class TestCaseService {
      * Mengambil SEMUA Test Case di Feature tertentu, asalkan user memiliki akses VIEW pada Project.
      * Logika izin ProjectMember menggantikan filter createdBy.
      */
-    public List<TestCaseResponse> getAllTestCasesByFeature(Long featureId, Long currentUserId) {
+    public Page<TestCaseResponse> getAllTestCasesByFeature(Long featureId, Long currentUserId, Pageable pageable) {
         // 1. Ambil Feature untuk mendapatkan idProject
         Feature feature = featureRepository.findById(featureId)
                 .orElseThrow(() -> new ResourceNotFoundException("Feature", "id", featureId));
@@ -98,12 +93,9 @@ public class TestCaseService {
             throw new IllegalStateException("Akses Ditolak: Anda tidak memiliki izin untuk melihat Test Case di proyek ini.");
         }
 
-        // Perbaikan utama: Mengambil SEMUA Test Case berdasarkan ID Feature
-        List<TestCase> testCases = testCaseRepository.findAllByFeatureId(featureId);
-
-        return testCases.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+        // Ambil Test Case berdasarkan ID Feature, dipaginasi
+        return testCaseRepository.findAllByFeatureId(featureId, pageable)
+                .map(this::mapToResponse);
     }
 
     // --- CREATE ---
@@ -167,6 +159,7 @@ public class TestCaseService {
     // --- UPDATE ---
     @Transactional
     public TestCaseResponse updateTestCase(Long testCaseId, TestCaseRequest request, Long currentUserId) {
+        // 1. Cari TestCase berdasarkan ID
         TestCase testCase = testCaseRepository.findById(testCaseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Test Case", "id", testCaseId));
 
@@ -179,10 +172,15 @@ public class TestCaseService {
 
         String oldName = testCase.getName();
 
-        // Pengecekan Feature: Jika ID Feature berubah, pastikan user punya izin EDIT di proyek feature baru
-        if (!testCase.getFeature().getId().equals(request.getIdFeature())) {
-            Feature newFeature = featureRepository.findById(request.getIdFeature())
-                    .orElseThrow(() -> new ResourceNotFoundException("Feature Baru", "id", request.getIdFeature()));
+        // 2. Ambil targetIdFeature: gunakan request jika ada, jika null fallback ke ID feature eksisting
+        Long targetIdFeature = request.getIdFeature() != null
+                ? request.getIdFeature()
+                : (testCase.getFeature() != null ? testCase.getFeature().getId() : null);
+
+        // 3. Jika targetIdFeature tidak null dan BERBEDA dengan feature saat ini, lakukan pemindahan/update feature
+        if (targetIdFeature != null && !testCase.getFeature().getId().equals(targetIdFeature)) {
+            Feature newFeature = featureRepository.findById(targetIdFeature)
+                    .orElseThrow(() -> new ResourceNotFoundException("Feature Baru", "id", targetIdFeature));
 
             Long newProjectId = newFeature.getProject().getId();
             if (!projectMemberService.isEditAccessAllowed(newProjectId, currentUserId)) {
@@ -191,6 +189,7 @@ public class TestCaseService {
             testCase.setFeature(newFeature);
         }
 
+        // 4. Update data bidang lainnya
         testCase.setName(request.getName());
         testCase.setDescription(request.getDescription());
         testCase.setType(request.getType());
@@ -204,7 +203,7 @@ public class TestCaseService {
         TestCase updatedTestCase = testCaseRepository.save(testCase);
 
         activityLogService.logAction(currentUserId, "UPDATE_TEST_CASE", "test_case", testCaseId,
-                String.format("Test Case diupdate. Nama: '%s' -> '%s'.", oldName, testCase.getName()),null);
+                String.format("Test Case diupdate. Nama: '%s' -> '%s'.", oldName, testCase.getName()), null);
 
         return mapToResponse(updatedTestCase);
     }

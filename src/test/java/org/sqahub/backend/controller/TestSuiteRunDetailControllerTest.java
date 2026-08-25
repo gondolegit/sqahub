@@ -3,10 +3,15 @@ package org.sqahub.backend.controller;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.model.TestSuiteRunDetail;
+import org.sqahub.backend.repository.TestSuiteRepository;
+import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.service.ProjectMemberService;
 import org.sqahub.backend.service.TestSuiteRunDetailService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -19,6 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(TestSuiteRunDetailController.class)
+@Import(SecurityTestConfig.class)
 public class TestSuiteRunDetailControllerTest {
 
     @Autowired
@@ -26,6 +32,15 @@ public class TestSuiteRunDetailControllerTest {
 
     @MockitoBean
     private TestSuiteRunDetailService runDetailService;
+
+    @MockitoBean
+    private TestSuiteRepository testSuiteRepository;
+
+    @MockitoBean
+    private ProjectMemberService projectMemberService;
+
+    @MockitoBean
+    private SecurityUtil securityUtil;
 
     @Autowired
     private ObjectMapper objectMapper;
