@@ -1,0 +1,7 @@
+target/
+evidence-storage/
+.git/
+.idea/
+.vscode/
+*.log
+.mvn/wrapper/maven-wrapper.jar

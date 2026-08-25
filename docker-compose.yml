@@ -1,0 +1,42 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: sqahub_db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
+    ports:
+      - "3306:3306"
+    volumes:
+      - sqahub_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/sqahub_db?useSSL=false&serverTimezone=UTC
+      DB_USERNAME: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
+      # WAJIB diganti untuk deployment sungguhan - jangan pakai default dari repo (sudah tercatat di git history).
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your .env before running docker compose}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_APP_PASSWORD: ${MAIL_APP_PASSWORD:-}
+      APP_OAUTH2_GOOGLE_CLIENT_ID: ${APP_OAUTH2_GOOGLE_CLIENT_ID:-}
+      APP_OAUTH2_GOOGLE_CLIENT_SECRET: ${APP_OAUTH2_GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - sqahub_evidence_storage:/app/evidence-storage
+
+volumes:
+  sqahub_mysql_data:
+  sqahub_evidence_storage:

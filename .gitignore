@@ -34,3 +34,6 @@ build/
 
 ### File upload lokal (Test Evidence) ###
 evidence-storage/
+
+### Secrets untuk docker-compose (pakai .env.example sebagai template) ###
+.env
