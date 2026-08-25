@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.sqahub.backend.dto.ErrorResponse;
@@ -62,6 +63,17 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         Bandwidth limit = Bandwidth.classic(maxAttempts,
                 Refill.intervally(maxAttempts, Duration.ofMinutes(windowMinutes)));
         return Bucket.builder().addLimit(limit).build();
+    }
+
+    /**
+     * Tanpa ini, peta bucket akan tumbuh tanpa batas kalau diserang dari banyak IP berbeda
+     * (tiap IP baru = 1 entri baru, tidak pernah dihapus) - kebocoran memori lambat.
+     * Dibersihkan total setiap jam; aman karena jendela rate limit hanya beberapa menit,
+     * jadi semua bucket sudah penuh kembali jauh sebelum dibersihkan.
+     */
+    @Scheduled(fixedRate = 60 * 60 * 1000)
+    public void resetBuckets() {
+        buckets.clear();
     }
 
     @Override
