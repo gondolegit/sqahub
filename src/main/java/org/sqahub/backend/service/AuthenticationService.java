@@ -11,6 +11,8 @@ import org.sqahub.backend.exception.DuplicateResourceException;
 import org.sqahub.backend.model.User;
 import org.sqahub.backend.repository.UserRepository;
 import org.sqahub.backend.security.JwtService;
+import org.sqahub.backend.security.TokenBlacklistService;
+import io.jsonwebtoken.Claims;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -35,9 +37,16 @@ public class AuthenticationService {
     private final AuthenticationManager authenticationManager;
     private final ActivityLogService activityLogService; // Integrasi Log
     private final EmailService emailService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Value("${app.frontend.reset-password-url:http://localhost:5173/reset-password}")
     private String frontendResetPasswordUrl;
+
+    // HARUS memakai property yang sama persis dengan JwtAuthenticationFilter, dan .trim() yang
+    // sama juga - kalau caranya beda, string token yang di-blacklist tidak akan pernah cocok
+    // dengan string yang dicek ulang oleh filter di request berikutnya.
+    @Value("${app.security.jwt.token-prefix}")
+    private String tokenPrefix;
 
     private static final int RESET_TOKEN_VALID_MINUTES = 30;
 
@@ -163,5 +172,18 @@ public class AuthenticationService {
         userRepository.save(user);
 
         activityLogService.logUserAction(user.getId(), "RESET_PASSWORD", "Password berhasil direset.");
+    }
+
+    /**
+     * Logout: menambahkan token JWT yang sedang dipakai ke blacklist, supaya langsung
+     * tidak valid lagi walau masa berlakunya secara teknis belum habis.
+     */
+    public void logout(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith(tokenPrefix)) {
+            throw new IllegalArgumentException("Header Authorization tidak valid untuk logout.");
+        }
+        String token = authorizationHeader.substring(tokenPrefix.length()).trim();
+        var expiration = jwtService.extractClaim(token, Claims::getExpiration);
+        tokenBlacklistService.blacklist(token, expiration.toInstant());
     }
 }

@@ -47,6 +47,7 @@ public class SecurityConfiguration {
     private final ApiKeyAuthenticationProvider apiKeyAuthenticationProvider;
     private final PasswordEncoder passwordEncoder; // Bean-nya ada di PasswordEncoderConfig
     private final RateLimitingFilter rateLimitingFilter; // Proteksi brute-force login/register
+    private final TokenBlacklistService tokenBlacklistService; // Untuk logout (JWT tidak bisa "dicabut" tanpa ini)
     // Optional: hanya ada isinya jika Google OAuth2 dikonfigurasi (lihat GoogleOAuth2Config)
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
@@ -59,8 +60,9 @@ public class SecurityConfiguration {
      * Spring akan otomatis menginjeksikan JwtService dan UserDetailsService yang diperlukan.
      */
     @Bean
-    public JwtAuthenticationFilter jwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService) {
-        return new JwtAuthenticationFilter(jwtService, userDetailsService);
+    public JwtAuthenticationFilter jwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService,
+                                                             TokenBlacklistService tokenBlacklistService) {
+        return new JwtAuthenticationFilter(jwtService, userDetailsService, tokenBlacklistService);
     }
 
     /**
@@ -112,7 +114,7 @@ public class SecurityConfiguration {
         ApiKeyAuthFilter apiKeyAuthFilter = new ApiKeyAuthFilter(authenticationManager);
 
         // Dapatkan filter JWT yang sudah menjadi Bean
-        JwtAuthenticationFilter jwtAuthFilter = jwtAuthenticationFilter(jwtService, userDetailsService());
+        JwtAuthenticationFilter jwtAuthFilter = jwtAuthenticationFilter(jwtService, userDetailsService(), tokenBlacklistService);
 
 
         http
@@ -126,6 +128,10 @@ public class SecurityConfiguration {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        // Lebih spesifik, HARUS didahulukan dari permitAll /auth/** di bawahnya:
+                        // logout butuh token yang benar-benar valid untuk di-blacklist.
+                        .requestMatchers("/api/v1/auth/logout").authenticated()
+
                         // VITAL: Aturan ini harus diutamakan. Izinkan akses publik untuk semua endpoint di bawah /api/v1/auth/
                         .requestMatchers("/api/v1/auth/**").permitAll()
 

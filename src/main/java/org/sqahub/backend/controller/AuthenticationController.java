@@ -9,8 +9,10 @@ import org.sqahub.backend.dto.RegisterRequest;
 import org.sqahub.backend.dto.ResetPasswordRequest;
 import org.sqahub.backend.service.AuthenticationService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -78,5 +80,18 @@ public class AuthenticationController {
     public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         service.resetPassword(request.getToken(), request.getNewPassword());
         return ResponseEntity.ok(Map.of("message", "Password berhasil direset. Silakan login dengan password baru."));
+    }
+
+    /**
+     * Endpoint POST untuk logout: menambahkan JWT yang sedang dipakai ke blacklist, supaya
+     * langsung tidak valid lagi walau masa berlakunya belum habis. Berbeda dari endpoint auth
+     * lain, ini WAJIB terautentikasi (lihat SecurityConfiguration - /auth/logout dikecualikan
+     * dari permitAll /auth/**), karena butuh token yang benar-benar valid untuk di-blacklist.
+     */
+    @PostMapping("/logout")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, String>> logout(@RequestHeader("Authorization") String authorizationHeader) {
+        service.logout(authorizationHeader);
+        return ResponseEntity.ok(Map.of("message", "Logout berhasil."));
     }
 }

@@ -15,6 +15,7 @@ import org.sqahub.backend.security.OAuth2AuthenticationFailureHandler;
 import org.sqahub.backend.security.OAuth2AuthenticationSuccessHandler;
 import org.sqahub.backend.security.RateLimitingFilter;
 import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.security.TokenBlacklistService;
 import org.sqahub.backend.service.ActivityLogService;
 import org.sqahub.backend.service.ApiKeyService;
 
@@ -94,5 +95,10 @@ public class SecurityTestConfig {
     @Bean
     public RateLimitingFilter rateLimitingFilter() {
         return new RateLimitingFilter();
+    }
+
+    @Bean
+    public TokenBlacklistService tokenBlacklistService() {
+        return new TokenBlacklistService();
     }
 }

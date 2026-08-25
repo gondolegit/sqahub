@@ -24,11 +24,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     // Tambahkan konstruktor eksplisit untuk Dependency Injection
-    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsService userDetailsService,
+                                    TokenBlacklistService tokenBlacklistService) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     @Value("${app.security.jwt.header}")
@@ -55,8 +58,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         // 2. Ekstrak Token
-        // Prefix biasanya "Bearer ", jadi kita ambil string setelahnya
-        jwt = authHeader.substring(TOKEN_PREFIX.length());
+        // .trim() sengaja ditambahkan: token-prefix dikonfigurasi tanpa spasi trailing ("Bearer",
+        // bukan "Bearer "), jadi substring ini masih menyertakan 1 spasi di depan token. JJWT
+        // tetap mem-parse-nya (makanya bug ini tidak ketahuan dari validasi token biasa), tapi
+        // untuk pencocokan blacklist berbasis String equality, token HARUS diekstrak persis sama
+        // di sini maupun di AuthenticationService.logout() - lihat komentar di sana.
+        jwt = authHeader.substring(TOKEN_PREFIX.length()).trim();
+
+        // Token yang sudah di-logout (lihat POST /auth/logout) ditolak walau tanda tangannya
+        // masih valid dan belum kadaluarsa - JWT stateless tidak bisa "dicabut" tanpa ini.
+        if (tokenBlacklistService.isBlacklisted(jwt)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         username = jwtService.extractUsername(jwt);
 
         // 3. Validasi Token dan Konteks Keamanan
