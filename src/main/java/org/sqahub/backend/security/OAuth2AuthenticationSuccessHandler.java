@@ -60,7 +60,16 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         String jwtToken = jwtService.generateToken(user);
         activityLogService.logUserAction(user.getId(), "LOGIN_GOOGLE", "Login berhasil via Google OAuth2.");
 
-        response.sendRedirect(frontendRedirectUri + "?token=" + jwtToken);
+        // Sertakan userId/username/role di query string, sama seperti field AuthenticationResponse
+        // pada /auth/authenticate biasa - frontend TIDAK bisa mendapatkan ini dari JWT saja
+        // (JWT yang dihasilkan JwtService hanya berisi klaim `sub`/`iat`/`exp`, tanpa role/userId).
+        String redirectUrl = frontendRedirectUri
+                + "?token=" + java.net.URLEncoder.encode(jwtToken, StandardCharsets.UTF_8)
+                + "&userId=" + user.getId()
+                + "&username=" + java.net.URLEncoder.encode(user.getUsername(), StandardCharsets.UTF_8)
+                + "&role=" + java.net.URLEncoder.encode(user.getRole(), StandardCharsets.UTF_8);
+
+        response.sendRedirect(redirectUrl);
     }
 
     /**
