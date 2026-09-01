@@ -1,6 +1,10 @@
 package org.sqahub.backend.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.sqahub.backend.dto.BulkOperationResponse;
+import org.sqahub.backend.dto.BulkTestCaseIdsRequest;
+import org.sqahub.backend.dto.BulkTestCaseMoveRequest;
+import org.sqahub.backend.dto.BulkTestCaseTagRequest;
 import org.sqahub.backend.dto.TestCaseImportResponse;
 import org.sqahub.backend.dto.TestCaseRequest;
 import org.sqahub.backend.dto.TestCaseResponse;
@@ -105,6 +109,41 @@ public class TestCaseController {
         Long currentUserId = securityUtil.getAuthenticatedUserId();
         testCaseService.deleteTestCase(id, currentUserId);
         return ResponseEntity.noContent().build();
+    }
+
+    // --- BULK ACTIONS ---
+    /**
+     * Hapus beberapa Test Case sekaligus. Setiap ID diproses independen (tidak ditemukan/bukan
+     * izin user tidak menggagalkan ID lain) — hasilnya dirangkum di response, selalu HTTP 200.
+     * Path: POST /api/v1/testcase/bulk-delete
+     */
+    @PostMapping("/bulk-delete")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')")
+    public ResponseEntity<BulkOperationResponse> bulkDeleteTestCases(@Valid @RequestBody BulkTestCaseIdsRequest request) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        return ResponseEntity.ok(testCaseService.bulkDeleteTestCases(request.getIds(), currentUserId));
+    }
+
+    /**
+     * Set tag yang sama untuk beberapa Test Case sekaligus (tag boleh kosong untuk menghapusnya).
+     * Path: PUT /api/v1/testcase/bulk-tag
+     */
+    @PutMapping("/bulk-tag")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')")
+    public ResponseEntity<BulkOperationResponse> bulkUpdateTag(@Valid @RequestBody BulkTestCaseTagRequest request) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        return ResponseEntity.ok(testCaseService.bulkUpdateTag(request.getIds(), request.getTag(), currentUserId));
+    }
+
+    /**
+     * Pindahkan beberapa Test Case sekaligus ke Feature lain.
+     * Path: PUT /api/v1/testcase/bulk-move
+     */
+    @PutMapping("/bulk-move")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')")
+    public ResponseEntity<BulkOperationResponse> bulkMoveToFeature(@Valid @RequestBody BulkTestCaseMoveRequest request) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        return ResponseEntity.ok(testCaseService.bulkMoveToFeature(request.getIds(), request.getTargetFeatureId(), currentUserId));
     }
 
     // --- IMPORT MASSAL (CSV/Excel) ---

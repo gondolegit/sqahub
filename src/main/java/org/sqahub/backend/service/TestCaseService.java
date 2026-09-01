@@ -1,6 +1,8 @@
 package org.sqahub.backend.service;
 
 import lombok.RequiredArgsConstructor;
+import org.sqahub.backend.dto.BulkOperationError;
+import org.sqahub.backend.dto.BulkOperationResponse;
 import org.sqahub.backend.dto.TestCaseRequest;
 import org.sqahub.backend.dto.TestCaseResponse;
 import org.sqahub.backend.exception.ResourceNotFoundException;
@@ -16,6 +18,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Service untuk mengelola semua operasi TestCase.
@@ -226,5 +231,124 @@ public class TestCaseService {
 
         activityLogService.logAction(currentUserId, "DELETE_TEST_CASE", "test_case", testCaseId,
                 "Test Case dihapus: " + testCaseName, null);
+    }
+
+    // --- BULK ACTIONS ---
+    // Catatan penting: method-method bulk di bawah ini SENGAJA satu @Transactional per method
+    // (bukan mendelegasikan ke createTestCase/updateTestCase/deleteTestCase yang masing-masing juga
+    // @Transactional), dan setiap iterasi membungkus exception-nya sendiri TANPA melempar ulang.
+    // Ini penting: kalau exception dibiarkan lolos dari method @Transactional ini, seluruh transaksi
+    // (termasuk item-item lain yang sudah berhasil diproses) akan di-rollback. Dengan menangkap
+    // exception per item di sini, satu ID yang gagal (tidak ditemukan / bukan izin user) tidak
+    // menggagalkan ID lain dalam batch yang sama — sama seperti pola di TestCaseImportService.
+
+    @Transactional
+    public BulkOperationResponse bulkDeleteTestCases(List<Long> ids, Long currentUserId) {
+        List<BulkOperationError> errors = new ArrayList<>();
+        int successCount = 0;
+
+        for (Long id : ids) {
+            try {
+                TestCase testCase = testCaseRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Test Case", "id", id));
+                Long projectId = testCase.getFeature().getProject().getId();
+                if (!projectMemberService.isDeleteAccessAllowed(projectId, currentUserId)) {
+                    throw new IllegalStateException("Akses ditolak untuk menghapus Test Case ini.");
+                }
+
+                String testCaseName = testCase.getName();
+                testCaseRepository.delete(testCase);
+                activityLogService.logAction(currentUserId, "DELETE_TEST_CASE", "test_case", id,
+                        "Test Case dihapus (bulk): " + testCaseName, null);
+                successCount++;
+            } catch (Exception e) {
+                errors.add(BulkOperationError.builder().id(id).message(e.getMessage()).build());
+            }
+        }
+
+        return BulkOperationResponse.builder()
+                .totalRequested(ids.size())
+                .successCount(successCount)
+                .failedCount(errors.size())
+                .errors(errors)
+                .build();
+    }
+
+    @Transactional
+    public BulkOperationResponse bulkUpdateTag(List<Long> ids, String tag, Long currentUserId) {
+        List<BulkOperationError> errors = new ArrayList<>();
+        int successCount = 0;
+
+        for (Long id : ids) {
+            try {
+                TestCase testCase = testCaseRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Test Case", "id", id));
+                Long projectId = testCase.getFeature().getProject().getId();
+                if (!projectMemberService.isEditAccessAllowed(projectId, currentUserId)) {
+                    throw new IllegalStateException("Akses ditolak untuk mengubah Test Case ini.");
+                }
+
+                testCase.setTag(tag);
+                testCaseRepository.save(testCase);
+                successCount++;
+            } catch (Exception e) {
+                errors.add(BulkOperationError.builder().id(id).message(e.getMessage()).build());
+            }
+        }
+
+        if (successCount > 0) {
+            activityLogService.logAction(currentUserId, "BULK_UPDATE_TAG", "test_case", null,
+                    "Bulk update tag menjadi '" + tag + "' untuk " + successCount + " Test Case.", null);
+        }
+
+        return BulkOperationResponse.builder()
+                .totalRequested(ids.size())
+                .successCount(successCount)
+                .failedCount(errors.size())
+                .errors(errors)
+                .build();
+    }
+
+    @Transactional
+    public BulkOperationResponse bulkMoveToFeature(List<Long> ids, Long targetFeatureId, Long currentUserId) {
+        Feature targetFeature = featureRepository.findById(targetFeatureId)
+                .orElseThrow(() -> new ResourceNotFoundException("Feature", "id", targetFeatureId));
+        Long targetProjectId = targetFeature.getProject().getId();
+        if (!projectMemberService.isEditAccessAllowed(targetProjectId, currentUserId)) {
+            throw new IllegalStateException("Akses Ditolak: Anda tidak memiliki izin untuk memindahkan Test Case ke Feature tujuan.");
+        }
+
+        List<BulkOperationError> errors = new ArrayList<>();
+        int successCount = 0;
+
+        for (Long id : ids) {
+            try {
+                TestCase testCase = testCaseRepository.findById(id)
+                        .orElseThrow(() -> new ResourceNotFoundException("Test Case", "id", id));
+                Long currentProjectId = testCase.getFeature().getProject().getId();
+                if (!projectMemberService.isEditAccessAllowed(currentProjectId, currentUserId)) {
+                    throw new IllegalStateException("Akses ditolak untuk memindahkan Test Case ini.");
+                }
+
+                testCase.setFeature(targetFeature);
+                testCase.setProject(targetFeature.getProject());
+                testCaseRepository.save(testCase);
+                successCount++;
+            } catch (Exception e) {
+                errors.add(BulkOperationError.builder().id(id).message(e.getMessage()).build());
+            }
+        }
+
+        if (successCount > 0) {
+            activityLogService.logAction(currentUserId, "BULK_MOVE_TEST_CASE", "feature", targetFeatureId,
+                    "Bulk pindah " + successCount + " Test Case ke Feature '" + targetFeature.getName() + "'.", null);
+        }
+
+        return BulkOperationResponse.builder()
+                .totalRequested(ids.size())
+                .successCount(successCount)
+                .failedCount(errors.size())
+                .errors(errors)
+                .build();
     }
 }
