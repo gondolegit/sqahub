@@ -1,18 +1,23 @@
 package org.sqahub.backend.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.sqahub.backend.dto.TestCaseImportResponse;
 import org.sqahub.backend.dto.TestCaseRequest;
 import org.sqahub.backend.dto.TestCaseResponse;
 import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.service.TestCaseImportService;
 import org.sqahub.backend.service.TestCaseService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -28,6 +33,7 @@ import java.security.Principal;
 public class TestCaseController {
 
     private final TestCaseService testCaseService;
+    private final TestCaseImportService testCaseImportService;
     private final SecurityUtil securityUtil; // Asumsi SecurityUtil mengembalikan Long ID dari Principal
 
     // --- NEW ENDPOINT: READ (All Test Cases by Project) ---
@@ -99,5 +105,36 @@ public class TestCaseController {
         Long currentUserId = securityUtil.getAuthenticatedUserId();
         testCaseService.deleteTestCase(id, currentUserId);
         return ResponseEntity.noContent().build();
+    }
+
+    // --- IMPORT MASSAL (CSV/Excel) ---
+    /**
+     * Import Test Case massal dari file .csv/.xlsx/.xls ke SATU Feature (idFeature di path).
+     * Baris yang gagal validasi tidak menggagalkan baris lain — hasilnya dirangkum di response
+     * (importedCount/failedCount/errors per baris) dengan HTTP 200 selama file itu sendiri valid.
+     * Path: POST /api/v1/testcase/feature/{featureId}/import
+     */
+    @PostMapping("/feature/{featureId}/import")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')")
+    public ResponseEntity<TestCaseImportResponse> importTestCases(
+            @PathVariable Long featureId,
+            @RequestParam("file") MultipartFile file) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        TestCaseImportResponse response = testCaseImportService.importTestCases(featureId, file, currentUserId);
+        return ResponseEntity.ok(response);
+    }
+
+    // --- TEMPLATE IMPORT (Excel siap-isi) ---
+    /**
+     * Path: GET /api/v1/testcase/import/template
+     */
+    @GetMapping("/import/template")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<byte[]> downloadImportTemplate() {
+        byte[] excelBytes = testCaseImportService.generateTemplateExcel();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"template-import-test-case.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(excelBytes);
     }
 }

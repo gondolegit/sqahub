@@ -55,10 +55,16 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<!-- Export laporan Test Suite ke file Excel (.xlsx) -->
+			<!-- Export laporan Test Suite ke file Excel (.xlsx), dan baca file .xlsx saat import Test Case -->
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>
 			<version>5.4.0</version>
+		</dependency>
+		<dependency>
+			<!-- Parsing file .csv saat import Test Case massal (RFC 4180 compliant, bukan split(",") manual) -->
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.11.0</version>
 		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
