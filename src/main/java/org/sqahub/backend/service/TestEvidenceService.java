@@ -1,6 +1,8 @@
 package org.sqahub.backend.service;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -14,20 +16,40 @@ import org.sqahub.backend.model.TestEvidence;
 import org.sqahub.backend.model.TestSuiteRunDetail;
 import org.sqahub.backend.repository.TestEvidenceRepository;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Layanan untuk mengelola metadata bukti tes maupun file fisiknya, termasuk validasi dan otorisasi.
+ * Layanan untuk mengelola metadata bukti tes maupun file fisiknya, termasuk validasi, otorisasi,
+ * penegakan kuota ukuran, dan kompresi otomatis untuk gambar (JPEG/PNG).
  */
 @Service
 @RequiredArgsConstructor
 public class TestEvidenceService {
+
+    private static final Logger log = LoggerFactory.getLogger(TestEvidenceService.class);
+
+    // Hanya dua tipe ini yang dikompresi otomatis — format gambar lain (GIF, WEBP, dst.) maupun
+    // file non-gambar (video, log, PDF) disimpan apa adanya tanpa diproses.
+    private static final Set<String> COMPRESSIBLE_IMAGE_TYPES = Set.of("image/jpeg", "image/png");
 
     private final TestEvidenceRepository evidenceRepository;
     private final TestSuiteRunDetailService runDetailService;
@@ -35,6 +57,18 @@ public class TestEvidenceService {
 
     @Value("${app.evidence.storage-dir:./evidence-storage}")
     private String storageDir;
+
+    @Value("${app.evidence.max-file-size-mb:10}")
+    private long maxFileSizeMb;
+
+    @Value("${app.evidence.max-total-size-per-run-mb:50}")
+    private long maxTotalSizePerRunMb;
+
+    @Value("${app.evidence.image-max-dimension-px:1920}")
+    private int imageMaxDimensionPx;
+
+    @Value("${app.evidence.image-jpeg-quality:0.82}")
+    private float imageJpegQuality;
 
     /**
      * Mengkonversi Entity menjadi Response DTO.
@@ -111,6 +145,11 @@ public class TestEvidenceService {
      * asli dari klien HANYA disimpan sebagai metadata tampilan, TIDAK PERNAH dipakai untuk
      * membangun path fisik, supaya tidak bisa disalahgunakan untuk path traversal
      * (mis. nama file "../../../etc/passwd").
+     *
+     * Dua kuota ditegakkan: ukuran satu file (app.evidence.max-file-size-mb) dan total ukuran
+     * SEMUA evidence milik Run Detail yang sama (app.evidence.max-total-size-per-run-mb). Gambar
+     * JPEG/PNG otomatis dikompresi (resize + re-encode) sebelum disimpan, jadi kuota total
+     * dicek ulang terhadap ukuran AKHIR setelah kompresi, bukan ukuran upload mentah.
      */
     @Transactional
     public TestEvidenceResponse uploadEvidence(Long runDetailId, MultipartFile file, String description, Long currentUserId) {
@@ -120,35 +159,157 @@ public class TestEvidenceService {
             throw new IllegalArgumentException("File bukti tidak boleh kosong.");
         }
 
+        long maxFileSizeBytes = maxFileSizeMb * 1024L * 1024L;
+        if (file.getSize() > maxFileSizeBytes) {
+            throw new IllegalArgumentException("Ukuran file (" + toMb(file.getSize()) + " MB) melebihi batas maksimum "
+                    + maxFileSizeMb + " MB per file.");
+        }
+
         String extension = extractSafeExtension(file.getOriginalFilename());
         String storedFileName = UUID.randomUUID() + (extension.isEmpty() ? "" : "." + extension);
 
+        Path directory = Paths.get(storageDir).toAbsolutePath().normalize();
+        Path targetPath;
+        long finalSize;
         try {
-            Path directory = Paths.get(storageDir).toAbsolutePath().normalize();
             Files.createDirectories(directory);
 
-            Path targetPath = directory.resolve(storedFileName).normalize();
+            targetPath = directory.resolve(storedFileName).normalize();
             // Pengecekan tambahan (defense in depth): pastikan hasil akhirnya tetap di dalam
             // direktori penyimpanan, walau secara teori storedFileName sudah aman (UUID + ekstensi saja).
             if (!targetPath.startsWith(directory)) {
                 throw new IllegalArgumentException("Nama file tidak valid.");
             }
 
-            file.transferTo(targetPath);
-
-            TestEvidence evidence = new TestEvidence();
-            evidence.setRunDetailId(runDetailId);
-            evidence.setFileName(file.getOriginalFilename());
-            evidence.setFileType(file.getContentType());
-            evidence.setFileSize(file.getSize());
-            evidence.setLocalFilePath(targetPath.toString());
-            evidence.setDescription(description);
-
-            TestEvidence saved = evidenceRepository.save(evidence);
-            return mapToResponse(saved);
+            finalSize = storeFile(file, targetPath);
         } catch (IOException e) {
             throw new IllegalStateException("Gagal menyimpan file bukti: " + e.getMessage(), e);
         }
+
+        long maxTotalBytes = maxTotalSizePerRunMb * 1024L * 1024L;
+        long existingTotal = evidenceRepository.sumFileSizeByRunDetailId(runDetailId);
+        if (existingTotal + finalSize > maxTotalBytes) {
+            deleteQuietly(targetPath);
+            throw new IllegalArgumentException("Total ukuran bukti untuk hasil test ini akan mencapai " +
+                    toMb(existingTotal + finalSize) + " MB, melebihi batas maksimum " + maxTotalSizePerRunMb + " MB per hasil test.");
+        }
+
+        TestEvidence evidence = new TestEvidence();
+        evidence.setRunDetailId(runDetailId);
+        evidence.setFileName(file.getOriginalFilename());
+        evidence.setFileType(file.getContentType());
+        evidence.setFileSize(finalSize);
+        evidence.setLocalFilePath(targetPath.toString());
+        evidence.setDescription(description);
+
+        TestEvidence saved = evidenceRepository.save(evidence);
+        return mapToResponse(saved);
+    }
+
+    /**
+     * Menyimpan file ke disk, mengompresi dulu jika ini gambar JPEG/PNG. Mengembalikan ukuran
+     * AKHIR file di disk (setelah kompresi, jika berlaku) — bukan ukuran upload mentah.
+     */
+    private long storeFile(MultipartFile file, Path targetPath) throws IOException {
+        String contentType = file.getContentType() != null ? file.getContentType().toLowerCase(Locale.ROOT) : "";
+        if (COMPRESSIBLE_IMAGE_TYPES.contains(contentType)) {
+            try {
+                return compressAndStoreImage(file, targetPath, contentType);
+            } catch (Exception e) {
+                // Kompresi gagal (mis. file diklaim image/jpeg tapi isinya korup/bukan gambar
+                // sungguhan) TIDAK BOLEH menggagalkan upload — simpan saja file aslinya apa adanya.
+                log.warn("Gagal mengompresi gambar evidence, menyimpan file asli tanpa kompresi: {}", e.getMessage());
+            }
+        }
+        file.transferTo(targetPath);
+        return file.getSize();
+    }
+
+    private long compressAndStoreImage(MultipartFile file, Path targetPath, String contentType) throws IOException {
+        BufferedImage original;
+        try (InputStream in = file.getInputStream()) {
+            original = ImageIO.read(in);
+        }
+        if (original == null) {
+            throw new IOException("Format gambar tidak dikenali oleh ImageIO.");
+        }
+
+        BufferedImage resized = resizeIfNeeded(original, imageMaxDimensionPx);
+        boolean isJpeg = "image/jpeg".equals(contentType);
+
+        try (OutputStream out = Files.newOutputStream(targetPath)) {
+            if (isJpeg) {
+                writeJpegWithQuality(resized, out, imageJpegQuality);
+            } else {
+                // PNG bersifat lossless (tidak ada parameter kualitas) - hanya resize dimensi yang
+                // berkontribusi ke pengurangan ukuran untuk format ini.
+                ImageIO.write(resized, "png", out);
+            }
+        }
+        return Files.size(targetPath);
+    }
+
+    /**
+     * Resize turun jika sisi terpanjang gambar melebihi maxDimension, mempertahankan aspek rasio
+     * dan channel alpha (kalau ada, mis. PNG transparan) - gambar yang sudah cukup kecil tidak diubah.
+     */
+    private BufferedImage resizeIfNeeded(BufferedImage original, int maxDimension) {
+        int width = original.getWidth();
+        int height = original.getHeight();
+        int longestSide = Math.max(width, height);
+        if (longestSide <= maxDimension) {
+            return original;
+        }
+
+        double scale = (double) maxDimension / longestSide;
+        int newWidth = Math.max(1, (int) Math.round(width * scale));
+        int newHeight = Math.max(1, (int) Math.round(height * scale));
+
+        int imageType = original.getColorModel().hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB;
+        BufferedImage resized = new BufferedImage(newWidth, newHeight, imageType);
+        Graphics2D g = resized.createGraphics();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(original, 0, 0, newWidth, newHeight, null);
+        } finally {
+            g.dispose();
+        }
+        return resized;
+    }
+
+    private void writeJpegWithQuality(BufferedImage image, OutputStream out, float quality) throws IOException {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpg");
+        if (!writers.hasNext()) {
+            ImageIO.write(image, "jpg", out);
+            return;
+        }
+
+        ImageWriter writer = writers.next();
+        try {
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(quality);
+
+            try (ImageOutputStream ios = ImageIO.createImageOutputStream(out)) {
+                writer.setOutput(ios);
+                writer.write(null, new IIOImage(image, null, null), param);
+            }
+        } finally {
+            writer.dispose();
+        }
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            log.warn("Gagal menghapus file evidence yang dibatalkan karena melebihi kuota: {}", path, e);
+        }
+    }
+
+    private String toMb(long bytes) {
+        return String.format(Locale.ROOT, "%.1f", bytes / (1024.0 * 1024.0));
     }
 
     /**
