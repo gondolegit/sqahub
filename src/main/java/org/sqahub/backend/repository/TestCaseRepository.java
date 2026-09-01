@@ -32,4 +32,10 @@ public interface TestCaseRepository extends JpaRepository<TestCase, Long> {
      * Versi berpaginasi dari findAllByFeatureId.
      */
     Page<TestCase> findAllByFeatureId(Long featureId, Pageable pageable);
+
+    /**
+     * Jumlah Test Case per Feature — dipakai untuk peta cakupan (coverage) di Quality Dashboard,
+     * query COUNT saja tanpa perlu memuat seluruh baris Test Case ke memori.
+     */
+    long countByFeatureId(Long featureId);
 }
