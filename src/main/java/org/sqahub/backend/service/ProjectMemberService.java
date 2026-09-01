@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.sqahub.backend.dto.ProjectMemberRequest;
 import org.sqahub.backend.dto.ProjectMemberResponse;
 import org.sqahub.backend.exception.ResourceNotFoundException;
+import org.sqahub.backend.model.NotificationType;
 import org.sqahub.backend.model.PermissionLevel;
 import org.sqahub.backend.model.Project;
 import org.sqahub.backend.model.ProjectMember;
@@ -32,6 +33,7 @@ public class ProjectMemberService {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final ActivityLogService activityLogService; // BARU: Untuk pencatatan aktivitas
+    private final NotificationService notificationService;
 
     // --- Helper untuk Konversi dan Pemetaan ---
 
@@ -177,6 +179,11 @@ public class ProjectMemberService {
 
         activityLogService.logAction(currentUserId, "ADD_PROJECT_MEMBER", "project_member", savedMember.getId(),
                 "Menambahkan anggota '" + newMember.getUsername() + "' ke Project '" + project.getName() + "' dengan peran: " + request.getRole(), null);
+
+        notificationService.create(newMember, NotificationType.PROJECT_MEMBER_ADDED,
+                "Ditambahkan ke proyek " + project.getName(),
+                "Anda ditambahkan ke proyek '" + project.getName() + "' sebagai " + request.getRole() + ".",
+                "/projects");
 
         return mapToResponse(savedMember);
     }

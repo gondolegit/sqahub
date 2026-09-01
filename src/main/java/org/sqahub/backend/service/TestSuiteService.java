@@ -7,16 +7,23 @@ import org.sqahub.backend.dto.TestSuiteRunDetailRequest;
 import org.sqahub.backend.dto.TestSuiteRunDetailResponse;
 import org.sqahub.backend.dto.DeployDecisionResponse;
 import org.sqahub.backend.exception.ResourceNotFoundException;
+import org.sqahub.backend.model.PermissionLevel;
 import org.sqahub.backend.model.Project;
+import org.sqahub.backend.model.ProjectMember;
+import org.sqahub.backend.model.NotificationType;
 import org.sqahub.backend.model.TestSuite;
 import org.sqahub.backend.model.TestSuiteRunDetail;
 import org.sqahub.backend.model.User;
 import org.sqahub.backend.model.TestCase;
+import org.sqahub.backend.repository.ProjectMemberRepository;
 import org.sqahub.backend.repository.TestSuiteRepository;
 import org.sqahub.backend.repository.TestSuiteRunDetailRepository;
 import org.sqahub.backend.repository.UserRepository;
 import org.sqahub.backend.repository.TestCaseRepository;
 import org.sqahub.backend.repository.ProjectRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -24,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -35,14 +44,22 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TestSuiteService {
 
+    private static final Logger log = LoggerFactory.getLogger(TestSuiteService.class);
+
     private final TestSuiteRepository testSuiteRepository;
     private final TestSuiteRunDetailRepository detailRepository;
     private final UserRepository userRepository;
     private final TestCaseRepository testCaseRepository;
     private final ProjectRepository projectRepository;
+    private final ProjectMemberRepository projectMemberRepository;
     private final ProjectMemberService projectMemberService;
     private final ActivityLogService activityLogService;
     private final DeployDecisionService deployDecisionService;
+    private final NotificationService notificationService;
+    private final EmailService emailService;
+
+    @Value("${app.frontend.base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
 
     // --- MAPPERS ---
 
@@ -420,7 +437,75 @@ public class TestSuiteService {
 
         List<TestSuiteRunDetail> details = detailRepository.findAllByTestSuiteId(id);
 
+        notifyRunFinalized(updatedTestSuite);
+
         return mapToResponse(updatedTestSuite, details);
+    }
+
+    /**
+     * Mengirim notifikasi in-app + email laporan kelayakan deploy setelah sebuah Test Suite Run
+     * difinalisasi. Dipanggil di akhir finalizeTestSuiteRun() — kegagalan di sini (mis. SMTP tidak
+     * terkonfigurasi) TIDAK BOLEH menggagalkan finalisasi itu sendiri, karena itu sudah tersimpan
+     * sebelum method ini dipanggil.
+     */
+    private void notifyRunFinalized(TestSuite testSuite) {
+        try {
+            String reportLink = "/test-suites/detail/" + testSuite.getId();
+            User executor = testSuite.getExecutedBy() != null ? testSuite.getExecutedBy() : testSuite.getCreatedBy();
+
+            // Kumpulkan penerima: eksekutor/pembuat run + OWNER + ADMIN proyek, dedup by user id.
+            Map<Long, User> recipients = new LinkedHashMap<>();
+            if (executor != null) {
+                recipients.put(executor.getId(), executor);
+                notificationService.create(executor, NotificationType.TEST_RUN_FINALIZED,
+                        "Test Suite Run selesai: " + testSuite.getName(),
+                        "Test Suite Run '" + testSuite.getName() + "' telah difinalisasi.",
+                        reportLink);
+            }
+
+            DeployDecisionResponse decision = deployDecisionService.evaluate(
+                    testSuite.getId(),
+                    testSuite.getName(),
+                    testSuite.getStatusTotalPassed(),
+                    testSuite.getStatusTotalFailed(),
+                    testSuite.getStatusTotalError(),
+                    testSuite.getStatusTotalSkipped());
+
+            Project project = testSuite.getProject();
+            if (!decision.isDeployRecommended() && project != null) {
+                User owner = userRepository.findById(project.getCreatedBy()).orElse(null);
+                if (owner != null) {
+                    recipients.putIfAbsent(owner.getId(), owner);
+                }
+                List<ProjectMember> admins = projectMemberRepository.findAllByProject_IdAndPermissionLevel(
+                        project.getId(), PermissionLevel.ADMIN);
+                for (ProjectMember admin : admins) {
+                    recipients.putIfAbsent(admin.getMember().getId(), admin.getMember());
+                }
+
+                for (User recipient : recipients.values()) {
+                    // Eksekutor sudah dapat notifikasi TEST_RUN_FINALIZED di atas; OWNER/ADMIN dapat
+                    // notifikasi tambahan DEPLOY_NOT_READY untuk menonjolkan urgensinya.
+                    if (executor == null || !recipient.getId().equals(executor.getId())) {
+                        notificationService.create(recipient, NotificationType.DEPLOY_NOT_READY,
+                                "Deploy TIDAK layak: " + testSuite.getName(),
+                                decision.getReason(),
+                                reportLink);
+                    }
+                }
+            }
+
+            String reportUrl = frontendBaseUrl + reportLink;
+            for (User recipient : recipients.values()) {
+                if (recipient.getEmail() != null && !recipient.getEmail().isBlank()) {
+                    emailService.sendDeployReadinessEmail(recipient.getEmail(), decision, reportUrl);
+                }
+            }
+        } catch (Exception e) {
+            // Efek samping (notifikasi/email) tidak boleh menggagalkan finalisasi Test Suite Run
+            // yang sudah tersimpan di atas.
+            log.error("Gagal mengirim notifikasi/email setelah finalisasi Test Suite Run {}", testSuite.getId(), e);
+        }
     }
 
     /**

@@ -26,4 +26,11 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
      * Mengambil semua proyek di mana user adalah anggota.
      */
     List<ProjectMember> findAllByMember_Id(Long memberId);
+
+    /**
+     * Mengambil anggota proyek dengan level izin tertentu — dipakai NotificationService untuk
+     * mencari ADMIN proyek (di luar OWNER, yang tidak tercatat di tabel ini) sebagai penerima
+     * notifikasi "deploy tidak layak".
+     */
+    List<ProjectMember> findAllByProject_IdAndPermissionLevel(Long projectId, PermissionLevel permissionLevel);
 }
