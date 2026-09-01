@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.service.RequirementTestCaseGenerationService;
 import org.sqahub.backend.service.TestCaseImportService;
 import org.sqahub.backend.service.TestCaseService;
 import org.sqahub.backend.exception.ResourceNotFoundException;
@@ -32,6 +33,9 @@ public class TestCaseControllerTest {
 
     @MockitoBean
     private TestCaseImportService testCaseImportService;
+
+    @MockitoBean
+    private RequirementTestCaseGenerationService requirementTestCaseGenerationService;
 
     @MockitoBean
     private SecurityUtil securityUtil;

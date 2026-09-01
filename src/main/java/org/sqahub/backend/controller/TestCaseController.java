@@ -5,10 +5,12 @@ import org.sqahub.backend.dto.BulkOperationResponse;
 import org.sqahub.backend.dto.BulkTestCaseIdsRequest;
 import org.sqahub.backend.dto.BulkTestCaseMoveRequest;
 import org.sqahub.backend.dto.BulkTestCaseTagRequest;
+import org.sqahub.backend.dto.RequirementImportResponse;
 import org.sqahub.backend.dto.TestCaseImportResponse;
 import org.sqahub.backend.dto.TestCaseRequest;
 import org.sqahub.backend.dto.TestCaseResponse;
 import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.service.RequirementTestCaseGenerationService;
 import org.sqahub.backend.service.TestCaseImportService;
 import org.sqahub.backend.service.TestCaseService;
 import org.springframework.data.domain.Page;
@@ -38,6 +40,7 @@ public class TestCaseController {
 
     private final TestCaseService testCaseService;
     private final TestCaseImportService testCaseImportService;
+    private final RequirementTestCaseGenerationService requirementTestCaseGenerationService;
     private final SecurityUtil securityUtil; // Asumsi SecurityUtil mengembalikan Long ID dari Principal
 
     // --- NEW ENDPOINT: READ (All Test Cases by Project) ---
@@ -173,6 +176,39 @@ public class TestCaseController {
         byte[] excelBytes = testCaseImportService.generateTemplateExcel();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"template-import-test-case.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(excelBytes);
+    }
+
+    // --- GENERATE TEST CASE DARI REQUIREMENT (Module Name + Gherkin Given-When-Then) ---
+    /**
+     * Generate Test Case massal dari file requirement (.csv/.xlsx/.xls) berisi Module Name +
+     * Scenario Name + Acceptance Criteria bergaya Gherkin per baris - transformasi DETERMINISTIK
+     * (Given/When/Then -> Pre-Condition/Test Steps/Expected Result), bukan AI generatif. Module
+     * Name yang belum ada Feature-nya di proyek dibuat otomatis. Baris yang gagal validasi tidak
+     * menggagalkan baris lain — hasilnya dirangkum di response dengan HTTP 200.
+     * Path: POST /api/v1/testcase/project/{projectId}/generate-from-requirements
+     */
+    @PostMapping("/project/{projectId}/generate-from-requirements")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TESTER')")
+    public ResponseEntity<RequirementImportResponse> generateFromRequirements(
+            @PathVariable Long projectId,
+            @RequestParam("file") MultipartFile file) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        RequirementImportResponse response = requirementTestCaseGenerationService.generateFromRequirements(projectId, file, currentUserId);
+        return ResponseEntity.ok(response);
+    }
+
+    // --- TEMPLATE GENERATE DARI REQUIREMENT (Excel siap-isi) ---
+    /**
+     * Path: GET /api/v1/testcase/generate-from-requirements/template
+     */
+    @GetMapping("/generate-from-requirements/template")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<byte[]> downloadRequirementTemplate() {
+        byte[] excelBytes = requirementTestCaseGenerationService.generateTemplateExcel();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"template-generate-test-case-from-requirements.xlsx\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(excelBytes);
     }
