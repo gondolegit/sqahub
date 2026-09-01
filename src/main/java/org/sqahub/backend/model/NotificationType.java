@@ -6,5 +6,6 @@ package org.sqahub.backend.model;
 public enum NotificationType {
     PROJECT_MEMBER_ADDED,
     TEST_RUN_FINALIZED,
-    DEPLOY_NOT_READY
+    DEPLOY_NOT_READY,
+    BUG_ASSIGNED
 }
