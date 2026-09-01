@@ -1,12 +1,14 @@
 package org.sqahub.backend.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.sqahub.backend.dto.JUnitImportResponse;
 import org.sqahub.backend.dto.TestSuiteRequest;
 import org.sqahub.backend.dto.TestSuiteResponse;
 import org.sqahub.backend.dto.TestSuiteRunDetailRequest;
 import org.sqahub.backend.dto.TestSuiteRunDetailResponse;
 import org.sqahub.backend.dto.DeployDecisionResponse;
 import org.sqahub.backend.exception.ResourceNotFoundException;
+import org.sqahub.backend.service.CiCdImportService;
 import org.sqahub.backend.service.TestSuiteExcelExportService;
 import org.sqahub.backend.service.TestSuiteService;
 import org.sqahub.backend.security.SecurityUtil;
@@ -15,9 +17,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.validation.Valid;
 import java.util.List;
@@ -35,6 +39,7 @@ public class TestSuiteController {
     private final TestSuiteService testSuiteService;
     private final SecurityUtil securityUtil;
     private final TestSuiteExcelExportService testSuiteExcelExportService;
+    private final CiCdImportService ciCdImportService;
 
     // --- Helper untuk Penanganan Error Konsisten ---
     private ResponseEntity<?> handleServiceCall(ServiceAction action) {
@@ -72,6 +77,31 @@ public class TestSuiteController {
             TestSuiteResponse response = testSuiteService.createTestSuite(request, currentUserId);
             return new ResponseEntity<>(response, HttpStatus.CREATED);
         });
+    }
+
+    // [CREATE] Import laporan JUnit XML dari CI/CD sebagai Test Suite Run baru, langsung
+    // difinalisasi. Endpoint: POST /api/v1/testsuite/import/junit
+    //
+    // Sengaja TIDAK memakai handleServiceCall() di atas seperti endpoint lain di controller ini —
+    // wrapper itu membungkus semua exception selain IllegalStateException/ResourceNotFoundException
+    // (termasuk IllegalArgumentException, yang paling sering dilempar CiCdImportService untuk
+    // validasi format file) menjadi RuntimeException generik yang berakhir sebagai 500 di
+    // GlobalExceptionHandler. Membiarkan exception mengalir langsung ke situ malah memberi mapping
+    // yang BENAR (IllegalArgumentException -> 400) tanpa perlu mengubah wrapper lama di atas.
+    @PostMapping(value = "/import/junit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN', 'TESTER', 'DEVELOPER')")
+    public ResponseEntity<JUnitImportResponse> importJUnitReport(
+            @RequestParam Long projectId,
+            @RequestParam Long defaultFeatureId,
+            @RequestParam(required = false) String testSuiteName,
+            @RequestParam(defaultValue = "STAGING") String testStage,
+            @RequestParam(defaultValue = "CI/CD") String testEnvironment,
+            @RequestParam(required = false) String tag,
+            @RequestParam("file") MultipartFile file) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        JUnitImportResponse response = ciCdImportService.importJUnitReport(
+                projectId, defaultFeatureId, testSuiteName, testStage, testEnvironment, tag, file, currentUserId);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
     // [READ] Single Test Suite

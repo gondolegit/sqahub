@@ -7,6 +7,7 @@ import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.dto.TestSuiteRequest;
 import org.sqahub.backend.dto.TestSuiteResponse;
 import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.service.CiCdImportService;
 import org.sqahub.backend.service.TestSuiteExcelExportService;
 import org.sqahub.backend.service.TestSuiteService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +40,9 @@ public class TestSuiteControllerTest {
 
     @MockitoBean
     private TestSuiteExcelExportService testSuiteExcelExportService;
+
+    @MockitoBean
+    private CiCdImportService ciCdImportService;
 
     @Autowired
     private ObjectMapper objectMapper;
