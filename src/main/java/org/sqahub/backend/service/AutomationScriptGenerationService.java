@@ -100,8 +100,15 @@ public class AutomationScriptGenerationService {
     /** Satu langkah valid di dalam sebuah skenario, siap ditulis sebagai baris pemanggilan. */
     private record ScenarioStep(int order, String moduleName, String methodName, String action, String inputData) {}
 
+    /**
+     * Hasil generate: file ZIP + jumlah baris yang dilewati (kalau ada). Controller menaruh
+     * warningsCount di header respons agar FE bisa menampilkan peringatan tanpa perlu membuka
+     * isi ZIP-nya di browser.
+     */
+    public record GenerationResult(byte[] zipBytes, int warningsCount) {}
+
     @Transactional(readOnly = true)
-    public byte[] generatePlaywrightScripts(Long projectId, MultipartFile file, Long currentUserId) {
+    public GenerationResult generatePlaywrightScripts(Long projectId, MultipartFile file, Long currentUserId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project", "id", projectId));
 
@@ -193,7 +200,7 @@ public class AutomationScriptGenerationService {
         }
 
         byte[] zipBytes = buildZip(methodsByModule, stepsByScenario, errors);
-        return zipBytes;
+        return new GenerationResult(zipBytes, errors.size());
     }
 
     private String validateRow(ParsedRow row) {

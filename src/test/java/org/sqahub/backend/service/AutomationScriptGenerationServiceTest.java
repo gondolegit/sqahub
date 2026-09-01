@@ -76,8 +76,9 @@ class AutomationScriptGenerationServiceTest {
                 "Login,Login sukses,3,Login Button,button[type=submit],click,\n" +
                 "Login,Login sukses,4,Dashboard Welcome Text,.welcome,assertText,Welcome qa_tester1\n";
 
-        byte[] zip = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
-        Map<String, String> entries = unzip(zip);
+        var result = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
+        assertEquals(0, result.warningsCount());
+        Map<String, String> entries = unzip(result.zipBytes());
 
         assertTrue(entries.containsKey("pages/LoginPage.ts"));
         assertTrue(entries.containsKey("tests/Login_sukses.spec.ts"));
@@ -114,8 +115,9 @@ class AutomationScriptGenerationServiceTest {
                 "Login,Skenario,1,Field A,#a,hover,\n" + // action tidak dikenal
                 "Login,Skenario,2,Field B,#b,click,\n";
 
-        byte[] zip = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
-        Map<String, String> entries = unzip(zip);
+        var result = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
+        assertEquals(1, result.warningsCount());
+        Map<String, String> entries = unzip(result.zipBytes());
 
         assertTrue(entries.containsKey("README_WARNINGS.txt"));
         assertTrue(entries.get("README_WARNINGS.txt").contains("tidak dikenali"));
@@ -131,8 +133,9 @@ class AutomationScriptGenerationServiceTest {
                 "Login,Skenario,1,Submit Button,,click,\n" +
                 "Login,Skenario,2,Other Field,#other,click,\n";
 
-        byte[] zip = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
-        Map<String, String> entries = unzip(zip);
+        var result = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
+        assertEquals(1, result.warningsCount());
+        Map<String, String> entries = unzip(result.zipBytes());
 
         assertTrue(entries.containsKey("README_WARNINGS.txt"));
         assertTrue(entries.get("README_WARNINGS.txt").contains("Element Locator wajib diisi"));
@@ -147,8 +150,9 @@ class AutomationScriptGenerationServiceTest {
                 "Login,Skenario A,1,Submit Button,#submit-a,click,\n" +
                 "Login,Skenario B,1,Submit Button,#submit-b,click,\n";
 
-        byte[] zip = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
-        Map<String, String> entries = unzip(zip);
+        var result = service.generatePlaywrightScripts(10L, csvFile(csv), 1L);
+        assertEquals(1, result.warningsCount());
+        Map<String, String> entries = unzip(result.zipBytes());
 
         assertTrue(entries.containsKey("README_WARNINGS.txt"));
         assertTrue(entries.get("README_WARNINGS.txt").contains("locator berbeda"));

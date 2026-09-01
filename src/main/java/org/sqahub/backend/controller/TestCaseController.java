@@ -233,11 +233,16 @@ public class TestCaseController {
             @PathVariable Long projectId,
             @RequestParam("file") MultipartFile file) {
         Long currentUserId = securityUtil.getAuthenticatedUserId();
-        byte[] zipBytes = automationScriptGenerationService.generatePlaywrightScripts(projectId, file, currentUserId);
+        var result = automationScriptGenerationService.generatePlaywrightScripts(projectId, file, currentUserId);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"playwright-automation-scripts.zip\"")
+                // Header kustom agar FE bisa tahu ada baris yang dilewati TANPA perlu membuka isi
+                // ZIP-nya di browser — rinciannya tetap ada di README_WARNINGS.txt di dalam ZIP.
+                // Exposed lewat CorsConfig (lihat access-control-expose-headers) supaya JS di FE
+                // (beda origin saat dev) bisa membacanya dari response.
+                .header("X-Generation-Warnings-Count", String.valueOf(result.warningsCount()))
                 .contentType(MediaType.parseMediaType("application/zip"))
-                .body(zipBytes);
+                .body(result.zipBytes());
     }
 
     // --- TEMPLATE GENERATE AUTOMATION SCRIPT (Excel siap-isi) ---

@@ -197,6 +197,11 @@ public class SecurityConfiguration {
                     .allowedOrigins(allowedOrigins)
                     .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                     .allowedHeaders("*")
+                    // Header kustom di luar CORS safelist bawaan browser (Cache-Control, Content-
+                    // Length, Content-Type, dst.) harus di-expose eksplisit agar terbaca oleh JS
+                    // FE - dipakai TestCaseController.generateAutomationScript untuk memberi tahu
+                    // jumlah baris yang dilewati tanpa FE perlu membuka isi file ZIP-nya.
+                    .exposedHeaders("X-Generation-Warnings-Count")
                     .allowCredentials(true);
         }
     }
