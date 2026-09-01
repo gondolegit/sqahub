@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.sqahub.backend.config.SecurityTestConfig;
 import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.service.AutomationScriptGenerationService;
 import org.sqahub.backend.service.RequirementTestCaseGenerationService;
 import org.sqahub.backend.service.TestCaseImportService;
 import org.sqahub.backend.service.TestCaseService;
@@ -36,6 +37,9 @@ public class TestCaseControllerTest {
 
     @MockitoBean
     private RequirementTestCaseGenerationService requirementTestCaseGenerationService;
+
+    @MockitoBean
+    private AutomationScriptGenerationService automationScriptGenerationService;
 
     @MockitoBean
     private SecurityUtil securityUtil;

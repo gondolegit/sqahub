@@ -10,6 +10,7 @@ import org.sqahub.backend.dto.TestCaseImportResponse;
 import org.sqahub.backend.dto.TestCaseRequest;
 import org.sqahub.backend.dto.TestCaseResponse;
 import org.sqahub.backend.security.SecurityUtil;
+import org.sqahub.backend.service.AutomationScriptGenerationService;
 import org.sqahub.backend.service.RequirementTestCaseGenerationService;
 import org.sqahub.backend.service.TestCaseImportService;
 import org.sqahub.backend.service.TestCaseService;
@@ -41,6 +42,7 @@ public class TestCaseController {
     private final TestCaseService testCaseService;
     private final TestCaseImportService testCaseImportService;
     private final RequirementTestCaseGenerationService requirementTestCaseGenerationService;
+    private final AutomationScriptGenerationService automationScriptGenerationService;
     private final SecurityUtil securityUtil; // Asumsi SecurityUtil mengembalikan Long ID dari Principal
 
     // --- NEW ENDPOINT: READ (All Test Cases by Project) ---
@@ -209,6 +211,45 @@ public class TestCaseController {
         byte[] excelBytes = requirementTestCaseGenerationService.generateTemplateExcel();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"template-generate-test-case-from-requirements.xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(excelBytes);
+    }
+
+    // --- GENERATE AUTOMATION SCRIPT (Page Object Model, Playwright TypeScript) ---
+    /**
+     * Generate skrip automation Playwright (TypeScript, pola Page Object Model) dari file berisi
+     * definisi elemen form (Module Name, Scenario Name, Field Name, Element Locator, Action,
+     * Input Data) - transformasi DETERMINISTIK dari data terstruktur, bukan AI generatif. Hasilnya
+     * berupa file .zip berisi pages/*.ts (satu class per Module) dan tests/*.spec.ts (satu file
+     * per Scenario). Baris yang gagal validasi dilewati dan dicatat di README_WARNINGS.txt di
+     * dalam ZIP, tidak menggagalkan baris lain. Fitur ini stateless — tidak menulis apa pun ke
+     * database. Hanya Playwright (TypeScript) yang didukung; Robot Framework dan Selenium Java
+     * belum diimplementasikan.
+     * Path: POST /api/v1/testcase/project/{projectId}/generate-automation-script
+     */
+    @PostMapping("/project/{projectId}/generate-automation-script")
+    @PreAuthorize("hasAnyRole('ADMIN', 'TESTER', 'DEVELOPER')")
+    public ResponseEntity<byte[]> generateAutomationScript(
+            @PathVariable Long projectId,
+            @RequestParam("file") MultipartFile file) {
+        Long currentUserId = securityUtil.getAuthenticatedUserId();
+        byte[] zipBytes = automationScriptGenerationService.generatePlaywrightScripts(projectId, file, currentUserId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"playwright-automation-scripts.zip\"")
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .body(zipBytes);
+    }
+
+    // --- TEMPLATE GENERATE AUTOMATION SCRIPT (Excel siap-isi) ---
+    /**
+     * Path: GET /api/v1/testcase/generate-automation-script/template
+     */
+    @GetMapping("/generate-automation-script/template")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<byte[]> downloadAutomationScriptTemplate() {
+        byte[] excelBytes = automationScriptGenerationService.generateTemplateExcel();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"template-generate-automation-script.xlsx\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(excelBytes);
     }
