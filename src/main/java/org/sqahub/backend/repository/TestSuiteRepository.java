@@ -4,6 +4,8 @@ import org.sqahub.backend.model.TestSuite;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -30,4 +32,12 @@ public interface TestSuiteRepository extends JpaRepository<TestSuite, Long> {
      * benar-benar selesai, bukan yang masih berjalan (statusTotal*-nya belum final).
      */
     List<TestSuite> findAllByProject_IdAndEndDateIsNotNullOrderByStartDateAsc(Long projectId);
+
+    /**
+     * Pencarian Global: Test Suite Run di salah satu proyek yang boleh diakses user, namanya
+     * mengandung kata kunci. `projectIds` sudah dibatasi izin akses oleh pemanggil (SearchService).
+     */
+    @Query("SELECT ts FROM TestSuite ts WHERE ts.project.id IN :projectIds " +
+            "AND LOWER(ts.name) LIKE LOWER(CONCAT('%', :query, '%'))")
+    List<TestSuite> searchByProjectIds(@Param("projectIds") List<Long> projectIds, @Param("query") String query, Pageable pageable);
 }

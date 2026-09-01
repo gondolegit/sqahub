@@ -4,6 +4,8 @@ import org.sqahub.backend.model.TestCase;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -38,4 +40,15 @@ public interface TestCaseRepository extends JpaRepository<TestCase, Long> {
      * query COUNT saja tanpa perlu memuat seluruh baris Test Case ke memori.
      */
     long countByFeatureId(Long featureId);
+
+    /**
+     * Pencarian Global: Test Case di salah satu proyek yang boleh diakses user, namanya/tag/
+     * deskripsinya mengandung kata kunci. `projectIds` sudah dibatasi izin akses oleh pemanggil
+     * (SearchService).
+     */
+    @Query("SELECT tc FROM TestCase tc WHERE tc.project.id IN :projectIds " +
+            "AND (LOWER(tc.name) LIKE LOWER(CONCAT('%', :query, '%')) " +
+            "     OR LOWER(tc.tag) LIKE LOWER(CONCAT('%', :query, '%')) " +
+            "     OR LOWER(tc.description) LIKE LOWER(CONCAT('%', :query, '%')))")
+    List<TestCase> searchByProjectIds(@Param("projectIds") List<Long> projectIds, @Param("query") String query, Pageable pageable);
 }
